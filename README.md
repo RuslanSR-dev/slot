@@ -4,6 +4,7 @@ A small appointment-booking product built as a training ground for test automati
 
 Сервис записи на услуги. Продукт намеренно тонкий: он нужен как объект тестирования, а основная работа идёт в платформе качества вокруг него.
 
+- [План проекта](docs/roadmap.md)
 - [Архитектура](docs/architecture.md)
 - [Стратегия тестирования](docs/test-strategy.md)
 - [Архитектурные решения (ADR)](docs/adr)
