@@ -1,0 +1,14 @@
+name: slot
+
+services:
+  booking:
+    build:
+      context: services/booking
+      args:
+        SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+    ports:
+      - "127.0.0.1:8000:8000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
