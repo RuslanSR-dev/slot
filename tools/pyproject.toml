@@ -1,0 +1,19 @@
+# Settings for the repository tools. Not a project of its own: the tools run
+# with the dev dependencies of the smoke project (TOOLS_RUN in the Makefile).
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["S101"]
+# git is a trusted executable called with a fixed argument list.
+"changed_services.py" = ["S603", "S607"]

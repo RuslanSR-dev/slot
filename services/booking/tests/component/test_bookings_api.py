@@ -72,6 +72,10 @@ class TestSlots:
             pytest.param({"starts_at": "2026-09-21T10:00:00"}, id="time-without-timezone"),
             pytest.param({"price_minor": 0}, id="zero-price"),
             pytest.param({"price_minor": None}, id="no-price"),
+            pytest.param({"price_minor": 1_000_000_001}, id="price-above-limit"),
+            pytest.param({"price_minor": 2**31}, id="price-beyond-database-integer"),
+            pytest.param({"master_id": "anna\x00"}, id="nul-byte-in-id"),
+            pytest.param({"master_id": "anna smith"}, id="space-in-id"),
         ],
     )
     def test_malformed_slot_is_rejected(
@@ -85,6 +89,25 @@ class TestSlots:
         } | body_change
 
         assert client.post("/slots", json=body).status_code == 422
+
+    def test_price_at_the_limit_is_accepted(self, client: TestClient) -> None:
+        body = {
+            "master_id": "anna",
+            "starts_at": (NOW + HOUR).isoformat(),
+            "ends_at": (NOW + 2 * HOUR).isoformat(),
+            "price_minor": 1_000_000_000,
+        }
+
+        assert client.post("/slots", json=body).status_code == 201
+
+    @pytest.mark.parametrize("master_id", ["\x00", "anna\x00", "a" * 65, ""])
+    def test_listing_with_a_malformed_master_id_is_rejected(
+        self, client: TestClient, master_id: str
+    ) -> None:
+        response = client.get("/slots", params={"master_id": master_id})
+
+        assert response.status_code == 422
+        assert response.json()["error"] == "invalid_request"
 
     def test_slots_are_filtered_by_master_and_day(self, client: TestClient) -> None:
         today = create_slot(client, hours_from_now=1)

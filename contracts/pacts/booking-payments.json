@@ -1,0 +1,251 @@
+{
+  "consumer": {
+    "name": "booking"
+  },
+  "interactions": [
+    {
+      "description": "a repeated request to pay for a booking",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a payment exists for the booking",
+          "params": {
+            "amount_minor": 150000,
+            "booking_id": "01999999-0000-7000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "amount_minor": 150000,
+            "booking_id": "01999999-0000-7000-8000-000000000001",
+            "currency": "RUB"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/payments"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "checkout_url": "https://paystub.example/checkout/ch_1",
+            "id": null,
+            "status": "pending"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.id": {
+              "type": "Uuid"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.checkout_url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^([0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12})$"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request to pay a different amount for an already paid booking",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a payment exists for the booking",
+          "params": {
+            "amount_minor": 99000,
+            "booking_id": "01999999-0000-7000-8000-000000000001"
+          }
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "amount_minor": 150000,
+            "booking_id": "01999999-0000-7000-8000-000000000001",
+            "currency": "RUB"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/payments"
+      },
+      "response": {
+        "status": 409
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request to pay for a booking",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the payment provider accepts charges"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "amount_minor": 150000,
+            "booking_id": "01999999-0000-7000-8000-000000000001",
+            "currency": "RUB"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/payments"
+      },
+      "response": {
+        "body": {
+          "content": {
+            "checkout_url": "https://paystub.example/checkout/ch_1",
+            "id": null,
+            "status": "pending"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "generators": {
+          "body": {
+            "$.id": {
+              "type": "Uuid"
+            }
+          }
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "matchingRules": {
+          "body": {
+            "$.checkout_url": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            },
+            "$.id": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "regex",
+                  "regex": "^([0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12})$"
+                }
+              ]
+            },
+            "$.status": {
+              "combine": "AND",
+              "matchers": [
+                {
+                  "match": "type"
+                }
+              ]
+            }
+          }
+        },
+        "status": 201
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a request to pay while the provider is down",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "the payment provider is down"
+        }
+      ],
+      "request": {
+        "body": {
+          "content": {
+            "amount_minor": 150000,
+            "booking_id": "01999999-0000-7000-8000-000000000001",
+            "currency": "RUB"
+          },
+          "contentType": "application/json",
+          "encoded": false
+        },
+        "headers": {
+          "Content-Type": [
+            "application/json"
+          ]
+        },
+        "method": "POST",
+        "path": "/payments"
+      },
+      "response": {
+        "status": 503
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "payments"
+  }
+}

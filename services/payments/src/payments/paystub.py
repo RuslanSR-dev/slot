@@ -14,6 +14,11 @@ class Charge:
     checkout_url: str
 
 
+def charge_request(payment_id: uuid.UUID, amount_minor: int, currency: str) -> dict[str, object]:
+    """Body of POST /v1/charges. Checked against PayStub's schema in the tests."""
+    return {"amount": amount_minor, "currency": currency, "reference": str(payment_id)}
+
+
 class PayStubClient:
     def __init__(self, base_url: str, api_key: str, timeout: float = 5.0) -> None:
         self._http = httpx2.Client(
@@ -27,7 +32,7 @@ class PayStubClient:
                 # The provider returns the same charge for a repeated key: a retry after
                 # a lost response does not charge the client twice (ADR-0008).
                 headers={"Idempotency-Key": str(payment_id)},
-                json={"amount": amount_minor, "currency": currency, "reference": str(payment_id)},
+                json=charge_request(payment_id, amount_minor, currency),
             )
         except httpx2.HTTPError as error:
             raise ProviderUnavailableError(f"PayStub did not respond: {error}") from error

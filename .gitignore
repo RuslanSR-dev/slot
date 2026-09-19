@@ -9,3 +9,4 @@ reports/
 .env
 .DS_Store
 mutants/
+.tmp/

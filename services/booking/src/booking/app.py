@@ -4,13 +4,18 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, Literal
+from http import HTTPStatus
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, Query, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 
 from booking import __version__, service
 from booking.domain import (
@@ -23,7 +28,15 @@ from booking.domain import (
     SlotNotFoundError,
 )
 from booking.payments_client import PaymentsClient
-from booking.schemas import BookingCreate, BookingOut, ErrorOut, PaymentOut, SlotCreate, SlotOut
+from booking.schemas import (
+    BookingCreate,
+    BookingOut,
+    ErrorOut,
+    ExternalId,
+    PaymentOut,
+    SlotCreate,
+    SlotOut,
+)
 
 SERVICE_NAME = "booking"
 # Reported when the build did not say which commit it is. Deliberately loud:
@@ -72,6 +85,11 @@ def system_clock() -> datetime:
     return datetime.now(UTC)
 
 
+def errors(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """Document error responses in the OpenAPI schema: they are part of the contract."""
+    return {code: {"model": ErrorOut} for code in codes}
+
+
 def create_app(settings: Settings | None = None, clock: Clock = system_clock) -> FastAPI:
     settings = settings or Settings.from_env()
     ttl = settings.pending_ttl
@@ -103,6 +121,34 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
         body = ErrorOut(error=error.code, detail=str(error))
         return JSONResponse(status_code=code, content=body.model_dump())
 
+    @app.exception_handler(StarletteHTTPException)
+    def http_error(request: Request, error: StarletteHTTPException) -> JSONResponse:
+        """Framework errors (400, 404, 405) in the same shape as ours."""
+        headers = dict(error.headers or {})
+        if error.status_code == status.HTTP_405_METHOD_NOT_ALLOWED:
+            # Starlette lists only the first route matching the path; RFC 9110
+            # requires every method the resource supports. Found by fuzzing.
+            headers["Allow"] = ", ".join(
+                sorted(
+                    method
+                    for route in app.router.routes
+                    if isinstance(route, APIRoute) and route.matches(request.scope)[0] != Match.NONE
+                    for method in route.methods or ()
+                )
+            )
+        phrase = HTTPStatus(error.status_code).phrase.lower().replace(" ", "_")
+        body = ErrorOut(error=phrase, detail=str(error.detail))
+        return JSONResponse(
+            status_code=error.status_code, content=body.model_dump(), headers=headers
+        )
+
+    @app.exception_handler(RequestValidationError)
+    def invalid_request(_: Request, error: RequestValidationError) -> JSONResponse:
+        # One error shape for the whole API: clients parse `error`, never FastAPI internals.
+        fields = ", ".join(".".join(str(part) for part in e["loc"]) for e in error.errors())
+        body = ErrorOut(error="invalid_request", detail=f"invalid: {fields}")
+        return JSONResponse(status_code=422, content=body.model_dump())
+
     @app.get("/health")
     def health() -> Health:
         return Health(
@@ -114,7 +160,7 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             build_sha=os.environ.get("SLOT_BUILD_SHA") or UNKNOWN_BUILD,
         )
 
-    @app.post("/slots", status_code=status.HTTP_201_CREATED)
+    @app.post("/slots", status_code=status.HTTP_201_CREATED, responses=errors(400, 422))
     def create_slot(body: SlotCreate, session: SessionDep) -> SlotOut:
         slot = service.create_slot(
             session, body.master_id, body.starts_at, body.ends_at, body.price_minor, now=clock()
@@ -128,9 +174,9 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             available=True,
         )
 
-    @app.get("/slots")
+    @app.get("/slots", responses=errors(422))
     def list_slots(
-        master_id: str,
+        master_id: ExternalId,
         session: SessionDep,
         day: Annotated[date | None, Query(alias="date", description="UTC day")] = None,
     ) -> list[SlotOut]:
@@ -146,12 +192,14 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             for slot, available in service.list_slots(session, master_id, day, clock(), ttl)
         ]
 
-    @app.post("/bookings", status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/bookings", status_code=status.HTTP_201_CREATED, responses=errors(400, 404, 409, 422)
+    )
     def create_booking(body: BookingCreate, session: SessionDep) -> BookingOut:
         booking = service.book_slot(session, body.slot_id, body.client_id, clock(), ttl)
         return BookingOut.model_validate(booking)
 
-    @app.post("/bookings/{booking_id}/payment")
+    @app.post("/bookings/{booking_id}/payment", responses=errors(404, 409, 422, 503))
     def pay_for_booking(booking_id: uuid.UUID, session: SessionDep) -> PaymentOut:
         _, slot = service.get_payable_booking(session, booking_id, clock(), ttl)
         amount = slot.price_minor
@@ -162,17 +210,17 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             payment_id=payment.id, status=payment.status, checkout_url=payment.checkout_url
         )
 
-    @app.get("/bookings/{booking_id}")
+    @app.get("/bookings/{booking_id}", responses=errors(404, 422))
     def get_booking(booking_id: uuid.UUID, session: SessionDep) -> BookingOut:
         return BookingOut.model_validate(service.get_booking(session, booking_id))
 
-    @app.delete("/bookings/{booking_id}")
+    @app.delete("/bookings/{booking_id}", responses=errors(404, 409, 422))
     def cancel_booking(booking_id: uuid.UUID, session: SessionDep) -> BookingOut:
         booking = service.change_status(session, booking_id, BookingStatus.CANCELLED, now=clock())
         return BookingOut.model_validate(booking)
 
     # Called by the payments service after a successful charge. Idempotent (ADR-0008).
-    @app.post("/internal/bookings/{booking_id}/confirm")
+    @app.post("/internal/bookings/{booking_id}/confirm", responses=errors(404, 409, 422))
     def confirm_booking(booking_id: uuid.UUID, session: SessionDep) -> BookingOut:
         booking = service.change_status(session, booking_id, BookingStatus.CONFIRMED, now=clock())
         return BookingOut.model_validate(booking)

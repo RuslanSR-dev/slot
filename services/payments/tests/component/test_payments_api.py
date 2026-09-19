@@ -101,6 +101,8 @@ def test_provider_failure_keeps_the_payment_for_a_retry(
     "body_change",
     [
         pytest.param({"amount_minor": 0}, id="zero-amount"),
+        pytest.param({"amount_minor": 1_000_000_001}, id="amount-above-limit"),
+        pytest.param({"amount_minor": 2**31}, id="amount-beyond-database-integer"),
         pytest.param({"currency": "rub"}, id="lowercase-currency"),
         pytest.param({"currency": "RUBL"}, id="long-currency"),
         pytest.param({"booking_id": "not-a-uuid"}, id="bad-booking-id"),
@@ -113,6 +115,12 @@ def test_malformed_payment_request_is_rejected(
 
     assert client.post("/payments", json=body).status_code == 422
     assert stubs.received("POST", CHARGES) == []
+
+
+def test_amount_at_the_limit_is_accepted(client: TestClient, stubs: WireMock) -> None:
+    stub_charge_created(stubs)
+
+    assert create_payment(client, BOOKING, amount_minor=1_000_000_000).status_code == 201
 
 
 def test_unknown_payment_is_not_found(client: TestClient) -> None:

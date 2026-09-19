@@ -152,8 +152,24 @@ class TestUntrustedInput:
         assert rejected.json()["error"] == "invalid_signature"
         assert genuine.json() == {"outcome": "processed"}, "a forged copy must not block it"
 
-    def test_signed_but_malformed_event_is_rejected(self, client: TestClient) -> None:
-        response = send_webhook(client, {"id": "evt_1", "type": "charge.succeeded"})
+    @pytest.mark.parametrize(
+        "event",
+        [
+            pytest.param({"id": "evt_1", "type": "charge.succeeded"}, id="no-data"),
+            pytest.param(
+                {
+                    "id": "evt_\x00",
+                    "type": "charge.succeeded",
+                    "data": {"charge_id": "c", "reference": "r"},
+                },
+                id="nul-byte-in-event-id",
+            ),
+        ],
+    )
+    def test_signed_but_malformed_event_is_rejected(
+        self, client: TestClient, event: dict[str, Any]
+    ) -> None:
+        response = send_webhook(client, event)
 
         assert response.status_code == 422
         assert response.json()["error"] == "invalid_event"

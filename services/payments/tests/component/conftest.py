@@ -138,17 +138,17 @@ def live_server(app: FastAPI) -> Iterator[str]:
     thread.join(timeout=10)
 
 
+def charge_created(charge_id: str = "ch_1") -> dict[str, str]:
+    """PayStub's answer to a new charge. Checked against its schema (test_paystub_contract)."""
+    return {
+        "id": charge_id,
+        "status": "requires_payment",
+        "checkout_url": f"https://paystub.example/checkout/{charge_id}",
+    }
+
+
 def stub_charge_created(stubs: WireMock, charge_id: str = "ch_1") -> None:
-    stubs.stub(
-        "POST",
-        CHARGES,
-        status=201,
-        json_body={
-            "id": charge_id,
-            "status": "requires_payment",
-            "checkout_url": f"https://paystub.example/checkout/{charge_id}",
-        },
-    )
+    stubs.stub("POST", CHARGES, status=201, json_body=charge_created(charge_id))
 
 
 def stub_booking_confirm(stubs: WireMock, **response: Any) -> None:

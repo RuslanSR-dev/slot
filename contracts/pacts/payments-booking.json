@@ -1,0 +1,79 @@
+{
+  "consumer": {
+    "name": "payments"
+  },
+  "interactions": [
+    {
+      "description": "a confirmation of a paid booking",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a pending booking exists",
+          "params": {
+            "booking_id": "01999999-0000-7000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/internal/bookings/01999999-0000-7000-8000-000000000002/confirm"
+      },
+      "response": {
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a confirmation that arrives after the booking expired",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "an expired booking exists",
+          "params": {
+            "booking_id": "01999999-0000-7000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/internal/bookings/01999999-0000-7000-8000-000000000002/confirm"
+      },
+      "response": {
+        "status": 409
+      },
+      "type": "Synchronous/HTTP"
+    },
+    {
+      "description": "a repeated confirmation of a paid booking",
+      "pending": false,
+      "providerStates": [
+        {
+          "name": "a confirmed booking exists",
+          "params": {
+            "booking_id": "01999999-0000-7000-8000-000000000002"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "path": "/internal/bookings/01999999-0000-7000-8000-000000000002/confirm"
+      },
+      "response": {
+        "status": 200
+      },
+      "type": "Synchronous/HTTP"
+    }
+  ],
+  "metadata": {
+    "pactRust": {
+      "ffi": "0.5.8",
+      "models": "1.3.16"
+    },
+    "pactSpecification": {
+      "version": "4.0"
+    }
+  },
+  "provider": {
+    "name": "booking"
+  }
+}

@@ -5,10 +5,14 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from payments.domain import PaymentStatus
 
+# 10 million roubles. Also keeps the value inside a 32-bit Postgres integer:
+# without it a huge amount was a 500 (found by fuzzing).
+MAX_AMOUNT_MINOR = 1_000_000_000
+
 
 class PaymentCreate(BaseModel):
     booking_id: uuid.UUID
-    amount_minor: Annotated[int, Field(gt=0, description="Amount in kopecks")]
+    amount_minor: Annotated[int, Field(gt=0, le=MAX_AMOUNT_MINOR, description="Amount in kopecks")]
     currency: Annotated[str, StringConstraints(pattern=r"^[A-Z]{3}$")]
 
 
@@ -32,8 +36,9 @@ class WebhookData(BaseModel):
 class WebhookEvent(BaseModel):
     """PayStub event, see contracts/paystub/openapi.yaml."""
 
-    id: Annotated[str, StringConstraints(min_length=1, max_length=64)]
-    type: Annotated[str, StringConstraints(min_length=1, max_length=64)]
+    # Printable ASCII only: the values are stored, and Postgres rejects NUL bytes.
+    id: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[ -~]+$")]
+    type: Annotated[str, StringConstraints(min_length=1, max_length=64, pattern=r"^[ -~]+$")]
     data: WebhookData
 
 

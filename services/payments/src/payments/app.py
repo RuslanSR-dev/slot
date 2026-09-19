@@ -10,13 +10,18 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from http import HTTPStatus
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, Header, Request, Response, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.routing import Match
 
 from payments import __version__, service
 from payments.booking_client import BookingClient
@@ -80,6 +85,11 @@ def system_clock() -> datetime:
     return datetime.now(UTC)
 
 
+def errors(*codes: int) -> dict[int | str, dict[str, Any]]:
+    """Document error responses in the OpenAPI schema: they are part of the contract."""
+    return {code: {"model": ErrorOut} for code in codes}
+
+
 async def raw_body(request: Request) -> bytes:
     """The exact bytes PayStub signed. A re-serialized JSON would not match."""
     return await request.body()
@@ -115,6 +125,34 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
         body = ErrorOut(error=error.code, detail=str(error))
         return JSONResponse(status_code=code, content=body.model_dump())
 
+    @app.exception_handler(StarletteHTTPException)
+    def http_error(request: Request, error: StarletteHTTPException) -> JSONResponse:
+        """Framework errors (400, 404, 405) in the same shape as ours."""
+        headers = dict(error.headers or {})
+        if error.status_code == status.HTTP_405_METHOD_NOT_ALLOWED:
+            # Starlette lists only the first route matching the path; RFC 9110
+            # requires every method the resource supports. Found by fuzzing.
+            headers["Allow"] = ", ".join(
+                sorted(
+                    method
+                    for route in app.router.routes
+                    if isinstance(route, APIRoute) and route.matches(request.scope)[0] != Match.NONE
+                    for method in route.methods or ()
+                )
+            )
+        phrase = HTTPStatus(error.status_code).phrase.lower().replace(" ", "_")
+        body = ErrorOut(error=phrase, detail=str(error.detail))
+        return JSONResponse(
+            status_code=error.status_code, content=body.model_dump(), headers=headers
+        )
+
+    @app.exception_handler(RequestValidationError)
+    def invalid_request(_: Request, error: RequestValidationError) -> JSONResponse:
+        # One error shape for the whole API: clients parse `error`, never FastAPI internals.
+        fields = ", ".join(".".join(str(part) for part in e["loc"]) for e in error.errors())
+        body = ErrorOut(error="invalid_request", detail=f"invalid: {fields}")
+        return JSONResponse(status_code=422, content=body.model_dump())
+
     @app.get("/health")
     def health() -> Health:
         return Health(
@@ -124,7 +162,16 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             build_sha=os.environ.get("SLOT_BUILD_SHA") or UNKNOWN_BUILD,
         )
 
-    @app.post("/payments", status_code=status.HTTP_201_CREATED)
+    @app.post(
+        "/payments",
+        status_code=status.HTTP_201_CREATED,
+        responses={
+            # A repeat for the same booking returns the existing payment (ADR-0008).
+            # Found undocumented by fuzzing.
+            200: {"model": PaymentOut, "description": "The payment already existed"},
+            **errors(400, 409, 422, 503),
+        },
+    )
     def create_payment(body: PaymentCreate, session: SessionDep, response: Response) -> PaymentOut:
         payment, created = service.create_payment(
             session, paystub, body.booking_id, body.amount_minor, body.currency, now=clock()
@@ -133,11 +180,11 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
             response.status_code = status.HTTP_200_OK
         return PaymentOut.model_validate(payment)
 
-    @app.get("/payments/{payment_id}")
+    @app.get("/payments/{payment_id}", responses=errors(404, 422))
     def get_payment(payment_id: uuid.UUID, session: SessionDep) -> PaymentOut:
         return PaymentOut.model_validate(service.get_payment(session, payment_id))
 
-    @app.post("/webhooks/paystub")
+    @app.post("/webhooks/paystub", responses=errors(401, 422, 503))
     def paystub_webhook(
         body: Annotated[bytes, Depends(raw_body)],
         session: SessionDep,

@@ -13,22 +13,57 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # What the change is compared with: breaking API changes, pacts of the
+  # deployed version (ADR-0007), affected services. The PR base, or the
+  # previous state of main.
+  BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+
 jobs:
+  changes:
+    name: affected services
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      services: ${{ steps.affected.outputs.services }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - id: affected
+        # main always runs everything: the safety net for a wrong impact analysis.
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            services='["booking","payments"]'
+          else
+            services=$(make -s changed-services)
+          fi
+          echo "services=$services" | tee -a "$GITHUB_OUTPUT"
+
   checks:
-    name: checks (lint, types, unit, mutation)
+    name: checks (lint, types, unit, contracts, mutation, API schema)
     runs-on: ubuntu-latest
     # Feedback-time budget (docs/adr/0004). A run that does not fit is a failure.
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
       - run: make install
       - run: make lint
       - run: make typecheck
+      - run: make test-tools
       - run: make test-unit
+      - run: make test-contract
       - run: make test-mutation
+      - run: make openapi-check
+      - run: make openapi-breaking
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -37,17 +72,20 @@ jobs:
           if-no-files-found: warn
 
   component:
-    name: component ${{ matrix.service }} (real Postgres, coverage gate)
-    needs: checks
+    name: component ${{ matrix.service }} (Postgres, WireMock, fuzzing, provider pacts)
+    needs: [changes, checks]
+    if: needs.changes.outputs.services != '[]'
     runs-on: ubuntu-latest
     # Budget set in ADR-0006, per service.
     timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
-        service: [booking, payments]
+        service: ${{ fromJSON(needs.changes.outputs.services) }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
@@ -62,6 +100,7 @@ jobs:
 
   stack-smoke:
     name: stack smoke (ephemeral environment)
+    # Always runs: the only place where all services work together.
     needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
