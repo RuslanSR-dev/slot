@@ -1,14 +1,46 @@
 name: slot
 
+x-booking-image: &booking-image
+  build:
+    context: services/booking
+    args:
+      SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+  image: slot-booking
+  environment:
+    SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@postgres:5432/slot
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+
 services:
+  postgres:
+    # Keep in sync with POSTGRES_IMAGE in services/booking/tests/component/conftest.py.
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: slot
+      POSTGRES_PASSWORD: slot
+      POSTGRES_DB: slot
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slot -d slot"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  # One-shot: applies migrations and exits. The service starts only after
+  # it succeeded, and never runs migrations itself (ADR-0006).
+  booking-migrate:
+    <<: *booking-image
+    command: ["python", "-m", "booking.migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   booking:
-    build:
-      context: services/booking
-      args:
-        SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+    <<: *booking-image
     ports:
       - "127.0.0.1:8000:8000"
-    read_only: true
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
+    depends_on:
+      booking-migrate:
+        condition: service_completed_successfully

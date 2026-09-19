@@ -5,7 +5,13 @@ BOOKING := services/booking
 # Empty without git (e.g. before the first commit): the service then reports "unknown".
 export SLOT_BUILD_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 
-.PHONY: help install format lint typecheck test-unit check up smoke down logs
+# Testcontainers talks to Docker through its API. With Colima the socket is not
+# at the default path, so take it from the active docker context (ADR-0006).
+export DOCKER_HOST ?= $(shell docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)
+# Path of the socket inside the Docker VM, mounted into the cleanup container.
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ?= /var/run/docker.sock
+
+.PHONY: help install format lint typecheck test-unit test-component check up smoke down logs
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-12s %s\n", $$1, $$2}'
@@ -22,9 +28,12 @@ lint: ## Gate: formatting and lint rules
 typecheck: ## Gate: strict typing
 	cd $(BOOKING) && uv run mypy src tests
 
-test-unit: ## Gate: unit tests with coverage threshold
-	cd $(BOOKING) && uv run pytest tests/unit --cov --cov-report=term-missing \
-		--junitxml=reports/junit-unit.xml
+test-unit: ## Gate: unit tests (fast, no Docker)
+	cd $(BOOKING) && uv run pytest tests/unit --junitxml=reports/junit-unit.xml
+
+test-component: ## Gate: unit + component tests on real Postgres, with coverage threshold
+	cd $(BOOKING) && uv run pytest tests/unit tests/component --cov --cov-report=term-missing \
+		--junitxml=reports/junit-component.xml
 
 check: lint typecheck test-unit ## Everything a PR must pass before the stack is built
 

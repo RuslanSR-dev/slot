@@ -35,6 +35,26 @@ jobs:
           path: services/booking/reports/
           if-no-files-found: warn
 
+  component:
+    name: component (real Postgres, coverage gate)
+    needs: checks
+    runs-on: ubuntu-latest
+    # Budget set in ADR-0006.
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: make install
+      - run: make test-component
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-component
+          path: services/booking/reports/
+          if-no-files-found: warn
+
   stack-smoke:
     name: stack smoke (ephemeral environment)
     needs: checks

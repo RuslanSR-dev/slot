@@ -17,7 +17,8 @@ flowchart LR
         payments["payments (2)<br/>адаптер платежей"]:::planned
         notifier["notifier (3)<br/>уведомления"]:::planned
         assistant["assistant (7)<br/>запись текстом, LLM"]:::planned
-        db[("Postgres (1)")]:::planned
+        migrate["booking-migrate<br/>миграции, однократно"]
+        db[("Postgres")]
         queue[["очередь (3)"]]:::planned
     end
 
@@ -35,6 +36,7 @@ flowchart LR
     assistant --> booking
     assistant --> llm
     booking --> db
+    migrate --> db
     booking --> payments
     payments --> provider
     booking --> queue --> notifier
@@ -58,4 +60,5 @@ flowchart LR
 
 - Сервисы общаются только по сети, общего кода нет (ADR-0002).
 - Каждый сервис отдаёт `/health` с версией и коммитом сборки (ADR-0003).
+- Правила, которые нельзя нарушать, гарантирует база, а не код (ADR-0005). Схема меняется только миграциями, их применяет отдельный одноразовый контейнер (ADR-0006).
 - Решения, которые дорого отменить, записываются в `docs/adr`.
