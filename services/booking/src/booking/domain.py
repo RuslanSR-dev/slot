@@ -1,5 +1,8 @@
 """Booking rules that do not depend on the database or HTTP.
 
+Error messages are marked `pragma: no mutate`: the API contract is the error
+`code`, the message is a hint for humans. Tests pin codes, not wording.
+
 Time is always passed in as `now`: code that reads the clock itself cannot
 be tested for "the slot has just started" without waiting for real time.
 """
@@ -62,18 +65,20 @@ class BookingNotFoundError(DomainError):
 
 def ensure_valid_slot(starts_at: datetime, ends_at: datetime, now: datetime) -> None:
     if starts_at.tzinfo is None or ends_at.tzinfo is None:
-        raise InvalidSlotError("slot times must include a timezone")
+        raise InvalidSlotError("slot times must include a timezone")  # pragma: no mutate
     if ends_at <= starts_at:
-        raise InvalidSlotError("slot must end after it starts")
+        raise InvalidSlotError("slot must end after it starts")  # pragma: no mutate
     if starts_at <= now:
-        raise InvalidSlotError("slot must start in the future")
+        raise InvalidSlotError("slot must start in the future")  # pragma: no mutate
 
 
 def ensure_bookable(starts_at: datetime, now: datetime) -> None:
     if starts_at <= now:
-        raise SlotInPastError("slot has already started")
+        raise SlotInPastError("slot has already started")  # pragma: no mutate
 
 
 def ensure_transition(current: BookingStatus, target: BookingStatus) -> None:
     if target not in ALLOWED_TRANSITIONS[current]:
-        raise InvalidTransitionError(f"cannot move booking from {current} to {target}")
+        raise InvalidTransitionError(
+            f"cannot move booking from {current} to {target}"
+        )  # pragma: no mutate
