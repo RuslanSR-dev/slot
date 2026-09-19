@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/charges",
+    "headers": {
+      "Idempotency-Key": { "matches": ".+" },
+      "Authorization": { "matches": "^Bearer .+" }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "ch_stack",
+      "status": "requires_payment",
+      "checkout_url": "https://paystub.example/checkout/ch_stack"
+    }
+  }
+}

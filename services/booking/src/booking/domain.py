@@ -7,8 +7,11 @@ Time is always passed in as `now`: code that reads the clock itself cannot
 be tested for "the slot has just started" without waiting for real time.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
+
+# An unpaid booking stops holding its slot after this long (ADR-0008).
+DEFAULT_PENDING_TTL = timedelta(minutes=15)
 
 
 class BookingStatus(StrEnum):
@@ -61,6 +64,18 @@ class SlotNotFoundError(DomainError):
 
 class BookingNotFoundError(DomainError):
     code = "booking_not_found"
+
+
+class BookingNotPayableError(DomainError):
+    code = "booking_not_payable"
+
+
+class PaymentsUnavailableError(DomainError):
+    code = "payments_unavailable"
+
+
+class PaymentConflictError(DomainError):
+    code = "payment_conflict"
 
 
 def ensure_valid_slot(starts_at: datetime, ends_at: datetime, now: datetime) -> None:

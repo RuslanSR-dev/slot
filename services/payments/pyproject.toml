@@ -1,7 +1,7 @@
 [project]
-name = "booking"
+name = "payments"
 version = "0.1.0"
-description = "Slot: booking service"
+description = "Slot: payments service, the only one that talks to the payment provider"
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.16",
@@ -27,7 +27,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/booking"]
+packages = ["src/payments"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config"
@@ -40,7 +40,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 branch = true
-source = ["booking"]
+source = ["payments"]
 
 [tool.coverage.report]
 # Ratchet: this number only goes up. See docs/test-strategy.md.
@@ -67,14 +67,15 @@ files = ["src", "tests", "tools"]
 # The whole package is copied so imports work; everything except domain.py is
 # excluded explicitly. A new module must be added here or to the mutated scope.
 source_paths = ["src/"]
-do_not_mutate = [
-    "src/booking/__init__.py",
-    "src/booking/app.py",
-    "src/booking/migrate.py",
-    "src/booking/migrations/*",
-    "src/booking/models.py",
-    "src/booking/payments_client.py",
-    "src/booking/schemas.py",
-    "src/booking/service.py",
-]
 pytest_add_cli_args_test_selection = ["tests/unit/"]
+do_not_mutate = [
+    "src/payments/__init__.py",
+    "src/payments/app.py",
+    "src/payments/booking_client.py",
+    "src/payments/migrate.py",
+    "src/payments/migrations/*",
+    "src/payments/models.py",
+    "src/payments/paystub.py",
+    "src/payments/schemas.py",
+    "src/payments/service.py",
+]

@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   checks:
-    name: checks (lint, types, unit)
+    name: checks (lint, types, unit, mutation)
     runs-on: ubuntu-latest
     # Feedback-time budget (docs/adr/0004). A run that does not fit is a failure.
     timeout-minutes: 5
@@ -33,27 +33,31 @@ jobs:
         if: always()
         with:
           name: reports-checks
-          path: services/booking/reports/
+          path: services/*/reports/
           if-no-files-found: warn
 
   component:
-    name: component (real Postgres, coverage gate)
+    name: component ${{ matrix.service }} (real Postgres, coverage gate)
     needs: checks
     runs-on: ubuntu-latest
-    # Budget set in ADR-0006.
+    # Budget set in ADR-0006, per service.
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [booking, payments]
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: make install
-      - run: make test-component
+      - run: make install SERVICES=${{ matrix.service }}
+      - run: make test-component SERVICES=${{ matrix.service }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: reports-component
-          path: services/booking/reports/
+          name: reports-component-${{ matrix.service }}
+          path: services/${{ matrix.service }}/reports/
           if-no-files-found: warn
 
   stack-smoke:
@@ -81,5 +85,5 @@ jobs:
         if: always()
         with:
           name: reports-smoke
-          path: services/booking/reports/
+          path: smoke/reports/
           if-no-files-found: warn

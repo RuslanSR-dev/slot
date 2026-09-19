@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 from booking.domain import BookingStatus
 
@@ -13,6 +13,7 @@ class SlotCreate(BaseModel):
     master_id: ExternalId
     starts_at: AwareDatetime
     ends_at: AwareDatetime
+    price_minor: Annotated[int, Field(gt=0, description="Price in kopecks")]
 
 
 class SlotOut(BaseModel):
@@ -20,6 +21,7 @@ class SlotOut(BaseModel):
     master_id: str
     starts_at: datetime
     ends_at: datetime
+    price_minor: int
     available: bool
 
 
@@ -37,6 +39,12 @@ class BookingOut(BaseModel):
     status: BookingStatus
     created_at: datetime
     updated_at: datetime
+
+
+class PaymentOut(BaseModel):
+    payment_id: uuid.UUID
+    status: str
+    checkout_url: str | None
 
 
 class ErrorOut(BaseModel):

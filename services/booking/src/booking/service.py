@@ -3,13 +3,13 @@
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 
-from sqlalchemy import exists, select, update
+from sqlalchemy import ColumnElement, and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from booking.domain import (
-    ACTIVE_STATUSES,
     BookingNotFoundError,
+    BookingNotPayableError,
     BookingStatus,
     InvalidTransitionError,
     SlotAlreadyBookedError,
@@ -22,20 +22,33 @@ from booking.models import ACTIVE_SLOT_INDEX, Booking, Slot
 
 
 def create_slot(
-    session: Session, master_id: str, starts_at: datetime, ends_at: datetime, now: datetime
+    session: Session,
+    master_id: str,
+    starts_at: datetime,
+    ends_at: datetime,
+    price_minor: int,
+    now: datetime,
 ) -> Slot:
     ensure_valid_slot(starts_at, ends_at, now)
-    slot = Slot(master_id=master_id, starts_at=starts_at, ends_at=ends_at)
+    slot = Slot(master_id=master_id, starts_at=starts_at, ends_at=ends_at, price_minor=price_minor)
     session.add(slot)
     session.commit()
     return slot
 
 
+def _holds_slot(now: datetime, pending_ttl: timedelta) -> ColumnElement[bool]:
+    """A booking holds its slot if it is confirmed, or pending and not stale (ADR-0008)."""
+    return or_(
+        Booking.status == BookingStatus.CONFIRMED,
+        and_(Booking.status == BookingStatus.PENDING, Booking.created_at > now - pending_ttl),
+    )
+
+
 def list_slots(
-    session: Session, master_id: str, day: date | None, now: datetime
+    session: Session, master_id: str, day: date | None, now: datetime, pending_ttl: timedelta
 ) -> list[tuple[Slot, bool]]:
     """Slots of a master with a flag "can be booked right now"."""
-    taken = exists().where(Booking.slot_id == Slot.id, Booking.status.in_(ACTIVE_STATUSES))
+    taken = exists().where(Booking.slot_id == Slot.id, _holds_slot(now, pending_ttl))
     query = select(Slot, taken).where(Slot.master_id == master_id).order_by(Slot.starts_at)
     if day is not None:
         day_start = datetime.combine(day, time.min, tzinfo=UTC)
@@ -45,15 +58,35 @@ def list_slots(
     ]
 
 
-def book_slot(session: Session, slot_id: uuid.UUID, client_id: str, now: datetime) -> Booking:
+def book_slot(
+    session: Session, slot_id: uuid.UUID, client_id: str, now: datetime, pending_ttl: timedelta
+) -> Booking:
     slot = session.get(Slot, slot_id)
     if slot is None:
         raise SlotNotFoundError(f"slot {slot_id} does not exist")
     ensure_bookable(slot.starts_at, now)
 
+    # Stale unpaid bookings stop holding the slot at the moment someone wants it:
+    # no scheduler is needed (ADR-0008).
+    session.execute(
+        update(Booking)
+        .where(
+            Booking.slot_id == slot_id,
+            Booking.status == BookingStatus.PENDING,
+            Booking.created_at <= now - pending_ttl,
+        )
+        .values(status=BookingStatus.EXPIRED, updated_at=now)
+    )
+
     # No "is it free?" check here: two concurrent requests would both pass it.
     # The database index decides who wins (ADR-0005).
-    booking = Booking(slot_id=slot_id, client_id=client_id, status=BookingStatus.PENDING)
+    booking = Booking(
+        slot_id=slot_id,
+        client_id=client_id,
+        status=BookingStatus.PENDING,
+        created_at=now,
+        updated_at=now,
+    )
     session.add(booking)
     try:
         session.commit()
@@ -77,11 +110,26 @@ def get_booking(session: Session, booking_id: uuid.UUID) -> Booking:
     return booking
 
 
+def get_payable_booking(
+    session: Session, booking_id: uuid.UUID, now: datetime, pending_ttl: timedelta
+) -> tuple[Booking, Slot]:
+    """A booking can be paid while it is pending and still holds its slot."""
+    booking = get_booking(session, booking_id)
+    if booking.status != BookingStatus.PENDING or booking.created_at <= now - pending_ttl:
+        raise BookingNotPayableError(f"booking {booking_id} is {booking.status} and cannot be paid")
+    slot = session.get_one(Slot, booking.slot_id)
+    return booking, slot
+
+
 def change_status(
     session: Session, booking_id: uuid.UUID, target: BookingStatus, now: datetime
 ) -> Booking:
     booking = get_booking(session, booking_id)
     current = BookingStatus(booking.status)
+    # Repeating a transition that already happened is a success, not an error:
+    # retries after a lost response must be safe (ADR-0008).
+    if current == target:
+        return booking
     ensure_transition(current, target)
 
     # Conditional update: if a concurrent request changed the status after we

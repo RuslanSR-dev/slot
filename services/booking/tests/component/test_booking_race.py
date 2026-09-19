@@ -57,6 +57,7 @@ def test_only_one_of_concurrent_bookings_wins(
                 "master_id": "anna",
                 "starts_at": (now + timedelta(hours=round_number + 1)).isoformat(),
                 "ends_at": (now + timedelta(hours=round_number + 2)).isoformat(),
+                "price_minor": 150_000,
             },
         ).json()
 

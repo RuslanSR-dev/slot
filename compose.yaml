@@ -1,46 +1,93 @@
 name: slot
 
-x-booking-image: &booking-image
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+
+x-postgres: &postgres
+  # Keep in sync with POSTGRES_IMAGE in services/*/tests/component/conftest.py.
+  image: postgres:18-alpine
+  environment:
+    POSTGRES_USER: slot
+    POSTGRES_PASSWORD: slot
+    POSTGRES_DB: slot
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U slot -d slot"]
+    interval: 2s
+    timeout: 3s
+    retries: 15
+
+x-booking: &booking
+  <<: *hardened
   build:
     context: services/booking
     args:
       SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
   image: slot-booking
   environment:
-    SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@postgres:5432/slot
-  read_only: true
-  cap_drop: [ALL]
-  security_opt:
-    - no-new-privileges:true
+    SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@booking-db:5432/slot
+    SLOT_PAYMENTS_URL: http://payments:8000
+
+x-payments: &payments
+  <<: *hardened
+  build:
+    context: services/payments
+    args:
+      SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+  image: slot-payments
+  environment:
+    SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@payments-db:5432/slot
+    SLOT_PAYSTUB_URL: http://paystub:8080
+    SLOT_PAYSTUB_API_KEY: local-api-key
+    SLOT_PAYSTUB_WEBHOOK_SECRET: ${SLOT_PAYSTUB_WEBHOOK_SECRET:-local-webhook-secret}
+    SLOT_BOOKING_URL: http://booking:8000
 
 services:
-  postgres:
-    # Keep in sync with POSTGRES_IMAGE in services/booking/tests/component/conftest.py.
-    image: postgres:18-alpine
-    environment:
-      POSTGRES_USER: slot
-      POSTGRES_PASSWORD: slot
-      POSTGRES_DB: slot
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U slot -d slot"]
-      interval: 2s
-      timeout: 3s
-      retries: 15
+  # Each service owns its database: no service reads another's tables.
+  booking-db:
+    <<: *postgres
 
-  # One-shot: applies migrations and exits. The service starts only after
-  # it succeeded, and never runs migrations itself (ADR-0006).
+  payments-db:
+    <<: *postgres
+
+  # One-shot jobs: apply migrations and exit. Services start only after
+  # they succeeded, and never run migrations themselves (ADR-0006).
   booking-migrate:
-    <<: *booking-image
+    <<: *booking
     command: ["python", "-m", "booking.migrate"]
     restart: "no"
     depends_on:
-      postgres:
+      booking-db:
+        condition: service_healthy
+
+  payments-migrate:
+    <<: *payments
+    command: ["python", "-m", "payments.migrate"]
+    restart: "no"
+    depends_on:
+      payments-db:
         condition: service_healthy
 
   booking:
-    <<: *booking-image
+    <<: *booking
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
       booking-migrate:
         condition: service_completed_successfully
+
+  payments:
+    <<: *payments
+    ports:
+      - "127.0.0.1:8001:8000"
+    depends_on:
+      payments-migrate:
+        condition: service_completed_successfully
+
+  # The external provider, replaced by a stub (contracts/paystub/openapi.yaml).
+  paystub:
+    image: wiremock/wiremock:3.13.1
+    volumes:
+      - ./infra/paystub/mappings:/home/wiremock/mappings:ro

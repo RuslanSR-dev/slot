@@ -14,15 +14,16 @@ flowchart LR
         web["web (4)<br/>интерфейс"]:::planned
         mobile["mobile (8)<br/>клиент"]:::planned
         booking["booking<br/>слоты и брони"]
-        payments["payments (2)<br/>адаптер платежей"]:::planned
+        payments["payments<br/>платежи, вебхуки"]
+        pdb[("Postgres payments")]
         notifier["notifier (3)<br/>уведомления"]:::planned
         assistant["assistant (7)<br/>запись текстом, LLM"]:::planned
         migrate["booking-migrate<br/>миграции, однократно"]
-        db[("Postgres")]
+        db[("Postgres booking")]
         queue[["очередь (3)"]]:::planned
     end
 
-    provider["Платёжный провайдер<br/>внешний, в тестах — заглушка"]:::external
+    provider["PayStub<br/>внешний провайдер, в стеке — WireMock"]:::external
     llm["API модели<br/>внешний"]:::external
 
     subgraph platform[Платформа качества]
@@ -37,8 +38,11 @@ flowchart LR
     assistant --> llm
     booking --> db
     migrate --> db
-    booking --> payments
+    booking -- создать платёж --> payments
+    payments -- подтвердить бронь --> booking
+    payments --> pdb
     payments --> provider
+    provider -. вебхук .-> payments
     booking --> queue --> notifier
     ci -- результаты прогонов --> hub
 
@@ -60,5 +64,7 @@ flowchart LR
 
 - Сервисы общаются только по сети, общего кода нет (ADR-0002).
 - Каждый сервис отдаёт `/health` с версией и коммитом сборки (ADR-0003).
+- У каждого сервиса своя база; чужие таблицы не читаются.
+- Повторы безопасны: дубликаты разводят естественные ключи в базе (ADR-0008).
 - Правила, которые нельзя нарушать, гарантирует база, а не код (ADR-0005). Схема меняется только миграциями, их применяет отдельный одноразовый контейнер (ADR-0006).
 - Решения, которые дорого отменить, записываются в `docs/adr`.

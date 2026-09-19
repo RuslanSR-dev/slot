@@ -1,0 +1,127 @@
+# PayStub: a fictional external payment provider.
+# Treat this file as received from another company: we cannot change it,
+# and it is all we know about their API (ADR-0007).
+openapi: 3.1.0
+info:
+  title: PayStub API
+  version: "1.4.0"
+  description: |
+    Charges are created by the merchant and paid by the customer on the
+    checkout page. The result arrives as a webhook.
+
+    Webhooks are delivered at least once and retried with backoff until the
+    merchant answers 2xx. Every webhook is signed: the `PayStub-Signature`
+    header is `sha256=` followed by the hex HMAC-SHA256 of the raw request
+    body, keyed with the merchant's webhook secret.
+servers:
+  - url: https://api.paystub.example
+security:
+  - apiKey: []
+paths:
+  /v1/charges:
+    post:
+      operationId: createCharge
+      summary: Create a charge
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A repeated key returns the charge created by the first request.
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChargeRequest"
+      responses:
+        "201":
+          description: Charge created, or returned for a repeated idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charge"
+        "401":
+          description: Missing or invalid API key.
+        "422":
+          description: Invalid request.
+        "5XX":
+          description: Temporary failure. Retry with the same idempotency key.
+webhooks:
+  chargeEvent:
+    post:
+      summary: Result of a charge
+      parameters:
+        - name: PayStub-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: "^sha256=[0-9a-f]{64}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Event"
+      responses:
+        "2XX":
+          description: Accepted. Any other answer makes PayStub retry.
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+  schemas:
+    ChargeRequest:
+      type: object
+      required: [amount, currency, reference]
+      additionalProperties: false
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          description: Amount in minor units.
+        currency:
+          type: string
+          pattern: "^[A-Z]{3}$"
+        reference:
+          type: string
+          maxLength: 64
+          description: Merchant's identifier, echoed back in webhooks.
+    Charge:
+      type: object
+      required: [id, status, checkout_url]
+      properties:
+        id:
+          type: string
+          pattern: "^ch_"
+        status:
+          type: string
+          enum: [requires_payment, succeeded, failed]
+        checkout_url:
+          type: string
+          format: uri
+    Event:
+      type: object
+      required: [id, type, data]
+      properties:
+        id:
+          type: string
+          pattern: "^evt_"
+          description: Unique per event. A retried delivery has the same id.
+        type:
+          type: string
+          description: |
+            charge.succeeded and charge.failed today. New types may appear
+            at any time; merchants must acknowledge types they do not know.
+        data:
+          type: object
+          required: [charge_id, reference]
+          properties:
+            charge_id:
+              type: string
+            reference:
+              type: string

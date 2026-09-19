@@ -2,7 +2,7 @@ import uuid
 from collections.abc import Iterable
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, func, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from booking.domain import ACTIVE_STATUSES, BookingStatus
@@ -23,6 +23,8 @@ class Slot(Base):
     master_id: Mapped[str] = mapped_column(String(64))
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Minor units (kopecks): money is never a float.
+    price_minor: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
