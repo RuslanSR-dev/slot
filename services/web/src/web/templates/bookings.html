@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Мои брони</h2>
+<form onsubmit="location.href = '/masters/' + this.master.value; return false;">
+  <label>Посмотреть слоты мастера
+    <input name="master" data-testid="master-name" autocomplete="off" required>
+  </label>
+  <button type="submit" data-testid="find-master">Показать</button>
+</form>
+{% if not bookings %}
+  <p class="muted" data-testid="no-bookings">Броней пока нет.</p>
+{% endif %}
+<div id="bookings">
+  {% for booking in bookings %}
+    <div class="row" data-testid="booking" data-booking-id="{{ booking.id }}">
+      <div>
+        <strong>{{ booking.master_id }}</strong>,
+        <time datetime="{{ booking.starts_at.isoformat() }}">{{ booking.starts_at.isoformat() }}</time>,
+        {{ booking.price_minor | roubles }} ₽
+      </div>
+      {% with booking_id = booking.id, state = booking.status, polling = booking.status == "pending" %}
+        {% include "partials/booking_status.html" %}
+      {% endwith %}
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

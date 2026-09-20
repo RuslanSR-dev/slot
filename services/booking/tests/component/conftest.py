@@ -41,12 +41,16 @@ DEFAULT_CLIENT = "client-1"
 DEFAULT_MASTER = "anna"
 
 
+def _b64(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).replace(b"=", b"").decode()
+
+
 def token(subject: str, role: str, expires_at: datetime | None = None) -> str:
     claims = {"sub": subject, "role": role, "exp": int((expires_at or NOW + DAY).timestamp())}
-    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode()
-    signature = base64.urlsafe_b64encode(
+    payload = _b64(json.dumps(claims).encode())
+    signature = _b64(
         hmac.new(AUTH_SECRET.encode(), f"v1.{payload}".encode(), hashlib.sha256).digest()
-    ).decode()
+    )
     return f"v1.{payload}.{signature}"
 
 

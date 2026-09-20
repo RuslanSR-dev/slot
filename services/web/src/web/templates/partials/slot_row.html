@@ -1,0 +1,4 @@
+<div class="row" data-testid="my-slot" data-slot-id="{{ slot.id }}">
+  <time datetime="{{ slot.starts_at.isoformat() }}">{{ slot.starts_at.isoformat() }}</time>,
+  {{ slot.price_minor | roubles }} ₽
+</div>

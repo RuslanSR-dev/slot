@@ -1,0 +1,74 @@
+[project]
+name = "web"
+version = "0.1.0"
+description = "Slot: the pages people use. Server-rendered templates plus HTMX, no build step."
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx2>=2.13",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.20",
+    "uvicorn>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "mutmut>=3.3",
+    "mypy>=1.11",
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.6",
+    "testcontainers>=4.10",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/web"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+xfail_strict = true
+# Our own deprecations fail the build; known third-party ones are listed explicitly.
+filterwarnings = [
+    "error",
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["web"]
+
+[tool.coverage.report]
+# Ratchet: this number only goes up. See docs/test-strategy.md.
+fail_under = 90
+show_missing = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use asserts and fake secrets. Production code keeps both rules.
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests", "tools"]
+
+[tool.mutmut]
+# Domain rules only: pure logic, fast unit tests, no Docker. See docs/test-strategy.md.
+# A new module must be added here or to the mutated scope.
+source_paths = ["src/"]
+do_not_mutate = [
+    "src/web/__init__.py",
+    "src/web/app.py",
+    "src/web/booking_client.py",
+    "src/web/pages.py",
+]
+pytest_add_cli_args_test_selection = ["tests/unit/"]

@@ -1,0 +1,44 @@
+[project]
+name = "slot-e2e"
+version = "0.1.0"
+description = "The few Slot scenarios that are only real through a browser."
+requires-python = ">=3.14"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13",
+    "mypy>=1.11",
+    "playwright>=1.48",
+    "pytest>=8",
+    "pytest-base-url>=2.1",
+    "pytest-playwright>=0.5",
+    "ruff>=0.6",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+# A failed scenario leaves a Playwright trace: every request, every DOM
+# snapshot, a video of what the browser did. Opened with:
+#   uv run playwright show-trace e2e/reports/artifacts/<test>/trace.zip
+addopts = """-ra --strict-markers --strict-config \
+  --tracing=retain-on-failure --screenshot=only-on-failure \
+  --output=reports/artifacts"""
+xfail_strict = true
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "SIM", "PT", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+strict = true
+files = ["tests"]

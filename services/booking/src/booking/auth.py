@@ -34,6 +34,10 @@ VERSION_PREFIX = "v1"
 SEPARATOR = "."
 PART_COUNT = 3
 DIGEST = hashlib.sha256
+# base64url in the token carries no padding: an "=" in a cookie value makes
+# the server quote it, and the quotes come back inside the token. Decoding
+# needs the padding again, and base64 ignores more of it than it needs.
+PADDING = "==="
 # Claim names. Short on purpose: the token travels in a header and a cookie.
 SUBJECT_CLAIM = "sub"
 ROLE_CLAIM = "role"
@@ -84,7 +88,7 @@ def signature(payload: str, secret: str) -> str:
     """Sign `v1.<payload>`: the version is signed together with the claims."""
     message = f"{VERSION_PREFIX}{SEPARATOR}{payload}".encode()
     digest = hmac.new(secret.encode(), message, DIGEST).digest()
-    return base64.urlsafe_b64encode(digest).decode()
+    return base64.urlsafe_b64encode(digest).replace(b"=", b"").decode()
 
 
 def verify_token(token: str, secret: str, now: datetime) -> Identity:
@@ -104,7 +108,7 @@ def verify_token(token: str, secret: str, now: datetime) -> Identity:
 def _claims(payload: str) -> dict[str, object]:
     """Read the claims. The signature is already checked, so this is our own data."""
     try:
-        claims = json.loads(base64.urlsafe_b64decode(payload))
+        claims = json.loads(base64.urlsafe_b64decode(payload + PADDING))
     except (binascii.Error, UnicodeDecodeError, ValueError) as error:
         raise InvalidTokenError(f"payload is not readable: {error}") from error  # pragma: no mutate
     if not isinstance(claims, dict):

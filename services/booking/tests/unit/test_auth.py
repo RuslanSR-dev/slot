@@ -45,7 +45,8 @@ VECTORS = vectors()
 
 
 def b64(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).decode()
+    """base64url, no padding: the token travels in a cookie (see auth.PADDING)."""
+    return base64.urlsafe_b64encode(raw).replace(b"=", b"").decode()
 
 
 def sign(payload: str, secret: str = SECRET) -> str:

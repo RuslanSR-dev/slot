@@ -15,14 +15,18 @@ import subprocess
 import sys
 from collections.abc import Iterable
 
-SERVICES = ("booking", "notifier", "payments")
+SERVICES = ("booking", "notifier", "payments", "web")
 # External APIs and the services that call them.
 EXTERNAL_API_USERS = {"contracts/paystub/": ("payments",), "contracts/notifygw/": ("notifier",)}
 # The event schema and the consumer expectations: both sides are re-checked,
 # because a change there can break either the producer or the consumer.
 EVENT_PARTIES = ("booking", "notifier")
-# Cannot change the behaviour of any service.
-IRRELEVANT = ("docs/", "README.md", "CLAUDE.md", ".gitignore", "smoke/")
+# The session token: web signs it, booking verifies it. A changed format
+# breaks whichever side did not change with it.
+TOKEN_PARTIES = ("booking", "web")
+# Cannot change the behaviour of any service. The system-level test projects
+# (smoke, e2e) are here because they run on every change anyway.
+IRRELEVANT = ("docs/", "README.md", "CLAUDE.md", ".gitignore", "smoke/", "e2e/")
 
 
 def affected_services(paths: Iterable[str]) -> list[str]:
@@ -35,6 +39,8 @@ def affected_services(paths: Iterable[str]) -> list[str]:
             affected.add(parts[1])
         elif path.startswith("contracts/events/"):
             affected.update(EVENT_PARTIES)
+        elif path.startswith("contracts/auth/"):
+            affected.update(TOKEN_PARTIES)
         elif path.startswith("contracts/pacts/") and path.endswith(".json"):
             # {consumer}-{provider}.json: the provider must verify the new contract.
             provider = parts[-1].removesuffix(".json").split("-")[-1]

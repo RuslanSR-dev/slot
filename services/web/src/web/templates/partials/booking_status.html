@@ -1,0 +1,31 @@
+{#
+  The row of one booking. While the booking is pending it comes back asking
+  for itself once a second; when it is settled, the hx-trigger is gone and
+  the page stops asking. An e2e test watches exactly that.
+#}
+<div class="status"
+     id="booking-{{ booking_id }}"
+     data-testid="booking-status"
+     data-state="{{ state }}"
+     {% if polling %}hx-get="/bookings/{{ booking_id }}/row" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {% if state == "pending" %}
+    <span data-testid="state-text">Ждём оплату</span>
+    <form method="post" action="/bookings/{{ booking_id }}/pay" style="display:inline">
+      <button type="submit" data-testid="pay">Оплатить</button>
+    </form>
+  {% elif state == "confirmed" %}
+    <span data-testid="state-text">Оплачено</span>
+  {% elif state == "cancelled" %}
+    <span data-testid="state-text">Отменена</span>
+  {% else %}
+    <span data-testid="state-text">Истекла</span>
+  {% endif %}
+  {% if state in ("pending", "confirmed") %}
+    <button type="button"
+            data-testid="cancel"
+            hx-post="/bookings/{{ booking_id }}/cancel"
+            hx-target="closest .status"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this">Отменить</button>
+  {% endif %}
+</div>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Slot</title>
+  <!-- Vendored, not from a CDN: the stack must work with no internet. -->
+  <script src="/static/htmx.min.js" defer></script>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0 auto; max-width: 42rem; padding: 1rem; }
+    header { display: flex; justify-content: space-between; align-items: baseline; }
+    .row { border: 1px solid #ddd; border-radius: .4rem; padding: .6rem; margin: .4rem 0; }
+    .muted { color: #666; }
+    .problem { color: #a00; }
+    button { padding: .3rem .7rem; }
+    button[disabled] { opacity: .5; }
+    label { display: block; margin: .4rem 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="/">Slot</a></h1>
+    {% if who %}
+      <form method="post" action="/logout">
+        <span class="muted">{{ who.name }} ({{ who.role }})</span>
+        <button type="submit">Выйти</button>
+      </form>
+    {% endif %}
+  </header>
+  <main>
+    {% if message %}<p class="problem" data-testid="page-problem">{{ message }}</p>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    // Slot keeps every time in UTC; a person reads the time on their own clock.
+    // The conversion for reading happens here, the one for writing on the server.
+    function showLocalTimes(root) {
+      root.querySelectorAll('time[datetime]:not([data-shown])').forEach(function (element) {
+        var moment = new Date(element.getAttribute('datetime'));
+        element.textContent = moment.toLocaleString('ru-RU', {
+          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        });
+        element.setAttribute('data-shown', '1');
+      });
+    }
+    function fillTimezone(root) {
+      root.querySelectorAll('input[name="timezone_offset"]').forEach(function (field) {
+        field.value = new Date().getTimezoneOffset();
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+      showLocalTimes(document);
+      fillTimezone(document);
+    });
+    document.body.addEventListener('htmx:afterSwap', function (event) {
+      showLocalTimes(event.target);
+      fillTimezone(document);
+    });
+  </script>
+</body>
+</html>

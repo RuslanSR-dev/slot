@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Мои слоты</h2>
+<form hx-post="/my-slots" hx-target="#slots" hx-swap="beforeend" data-testid="slot-form">
+  <label>Начало
+    <input type="datetime-local" name="starts_at" data-testid="starts-at" required>
+  </label>
+  <label>Длительность, минут
+    <input type="number" name="duration_minutes" value="60" min="1" data-testid="duration">
+  </label>
+  <label>Цена, ₽
+    <input type="text" name="price" value="1500" data-testid="price">
+  </label>
+  <!-- Filled by the browser; the server turns local time into UTC. -->
+  <input type="hidden" name="timezone_offset" value="0">
+  <button type="submit" data-testid="publish">Опубликовать</button>
+</form>
+<div id="slots">
+  {% for slot in slots %}
+    {% include "partials/slot_row.html" %}
+  {% endfor %}
+</div>
+{% endblock %}
