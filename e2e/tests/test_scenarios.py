@@ -65,8 +65,14 @@ def test_a_paid_booking_confirms_itself_while_the_page_is_open(
 
     assert paid_at_the_provider(page).startswith(f"{CHECKOUT_HOST}/checkout/")
 
-    # Back from the provider's page, where our polling has to pick up again.
-    page.go_back()
+    # Back from the provider, where our polling has to pick up again. The
+    # customer returns by a fresh navigation, the way a provider's return URL
+    # brings them back - not with the back button. That also keeps the test
+    # away from a race it cannot win: `paystub.example` resolves nowhere, the
+    # browser ends up on its own error page, and going back from a navigation
+    # that is still settling failed about once in ten runs with "Not attached
+    # to an active page".
+    page.goto(f"{WEB_URL}/bookings")
     expect(page.get_by_test_id("state-text")).to_have_text("Ждём оплату")
 
     # The customer paid. Nobody touches the browser after this line.
