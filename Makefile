@@ -38,7 +38,7 @@ in_each = for dir in $(1); do echo "--- $$dir"; (cd $$dir && $(2)) || exit 1; do
 
 .PHONY: help install format lint typecheck test-unit test-mutation test-component check \
 	openapi openapi-check openapi-breaking events events-check events-breaking \
-	test-contract base-pacts test-tools changed-services up smoke down logs
+	test-contract base-pacts test-tools fitness changed-services up smoke down logs
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -121,10 +121,13 @@ events-breaking: ## Gate: no breaking changes of the event schema against BASE_R
 test-tools: ## Gate: tests of the repository tools (test impact analysis)
 	@$(TOOLS_RUN) pytest tools -q
 
+fitness: ## Gate: fitness function - no service imports the code of another (ADR-0002)
+	@$(TOOLS_RUN) python tools/import_boundaries.py
+
 changed-services: ## Print the services the changes since BASE_REF can break (JSON)
 	@$(TOOLS_RUN) python tools/changed_services.py $(BASE_REF)
 
-check: lint typecheck test-tools test-unit test-contract test-mutation openapi-check events-check ## Everything a PR must pass before Docker is needed
+check: lint typecheck test-tools fitness test-unit test-contract test-mutation openapi-check events-check ## Everything a PR must pass before Docker is needed
 
 up: ## Build images and start the whole stack, wait until healthy
 	docker compose up --detach --build --wait

@@ -59,6 +59,7 @@ jobs:
       - run: make lint
       - run: make typecheck
       - run: make test-tools
+      - run: make fitness
       - run: make test-unit
       - run: make test-contract
       - run: make test-mutation
