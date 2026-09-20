@@ -1,0 +1,24 @@
+{
+  "format": "v1.<base64url(claims)>.<base64url(hmac-sha256 of the two parts before it)>",
+  "secret": "golden-secret-for-the-vectors",
+  "vectors": [
+    {
+      "expires_at": 1790000000,
+      "role": "master",
+      "subject": "anna",
+      "token": "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0=.oWkUYn-rHJN545C2CCbqVu2RMAeLYXunD1a75MWZz04="
+    },
+    {
+      "expires_at": 1790000000,
+      "role": "client",
+      "subject": "client-42",
+      "token": "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ==._FGagf0O-86dy0P8XYlk1OchGAec5klxZmYWwRaqeqw="
+    },
+    {
+      "expires_at": 2000000000,
+      "role": "client",
+      "subject": "o.brien:1@slot",
+      "token": "v1.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY="
+    }
+  ]
+}

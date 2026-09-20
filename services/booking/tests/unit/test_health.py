@@ -2,12 +2,19 @@ import pytest
 from fastapi.testclient import TestClient
 
 from booking import __version__
-from booking.app import UNKNOWN_BUILD, create_app
+from booking.app import UNKNOWN_BUILD, Settings, create_app
 
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app())
+    return TestClient(
+        create_app(
+            Settings(
+                database_url="postgresql+psycopg://unused:unused@localhost:1/unused",
+                auth_secret="secret",
+            )
+        )
+    )
 
 
 def test_health_reports_service_and_version(

@@ -2,14 +2,8 @@
   "components": {
     "schemas": {
       "BookingCreate": {
+        "description": "The client is taken from the token, for the same reason as the master.",
         "properties": {
-          "client_id": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9._:@-]+$",
-            "title": "Client Id",
-            "type": "string"
-          },
           "slot_id": {
             "format": "uuid",
             "title": "Slot Id",
@@ -17,8 +11,7 @@
           }
         },
         "required": [
-          "slot_id",
-          "client_id"
+          "slot_id"
         ],
         "title": "BookingCreate",
         "type": "object"
@@ -121,6 +114,70 @@
         "title": "Health",
         "type": "object"
       },
+      "MyBookingOut": {
+        "description": "A booking with the slot it is for: what a person needs to see on one page.\n\nWithout the slot fields every list would cost one more request per row,\nand the interface would have to read a slot that is not its business.",
+        "properties": {
+          "client_id": {
+            "title": "Client Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ends_at": {
+            "format": "date-time",
+            "title": "Ends At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "master_id": {
+            "title": "Master Id",
+            "type": "string"
+          },
+          "price_minor": {
+            "title": "Price Minor",
+            "type": "integer"
+          },
+          "slot_id": {
+            "format": "uuid",
+            "title": "Slot Id",
+            "type": "string"
+          },
+          "starts_at": {
+            "format": "date-time",
+            "title": "Starts At",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BookingStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slot_id",
+          "client_id",
+          "master_id",
+          "status",
+          "starts_at",
+          "ends_at",
+          "price_minor",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MyBookingOut",
+        "type": "object"
+      },
       "PaymentOut": {
         "properties": {
           "checkout_url": {
@@ -153,17 +210,11 @@
         "type": "object"
       },
       "SlotCreate": {
+        "description": "Who the master is comes from the token, not from the body: a caller\nmust not be able to publish slots in someone else's name.",
         "properties": {
           "ends_at": {
             "format": "date-time",
             "title": "Ends At",
-            "type": "string"
-          },
-          "master_id": {
-            "maxLength": 64,
-            "minLength": 1,
-            "pattern": "^[A-Za-z0-9._:@-]+$",
-            "title": "Master Id",
             "type": "string"
           },
           "price_minor": {
@@ -180,7 +231,6 @@
           }
         },
         "required": [
-          "master_id",
           "starts_at",
           "ends_at",
           "price_minor"
@@ -229,6 +279,13 @@
         "title": "SlotOut",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "description": "Token issued by the web service",
+        "scheme": "bearer",
+        "type": "http"
+      }
     }
   },
   "info": {
@@ -238,6 +295,52 @@
   "openapi": "3.1.0",
   "paths": {
     "/bookings": {
+      "get": {
+        "description": "No filter parameter: the caller can only ever ask for their own.",
+        "operationId": "list_my_bookings_bookings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MyBookingOut"
+                  },
+                  "title": "Response List My Bookings Bookings Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Bookings"
+      },
       "post": {
         "operationId": "create_booking_bookings_post",
         "requestBody": {
@@ -271,6 +374,26 @@
             },
             "description": "Bad Request"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -302,6 +425,11 @@
             "description": "Unprocessable Content"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Booking"
       }
     },
@@ -331,6 +459,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -362,6 +500,11 @@
             "description": "Unprocessable Content"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Cancel Booking"
       },
       "get": {
@@ -389,6 +532,16 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
           "404": {
             "content": {
               "application/json": {
@@ -410,6 +563,11 @@
             "description": "Unprocessable Content"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Get Booking"
       }
     },
@@ -438,6 +596,26 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "404": {
             "content": {
@@ -480,6 +658,11 @@
             "description": "Service Unavailable"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Pay For Booking"
       }
     },
@@ -658,6 +841,26 @@
             },
             "description": "Bad Request"
           },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorOut"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -669,6 +872,11 @@
             "description": "Unprocessable Content"
           }
         },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "summary": "Create Slot"
       }
     }

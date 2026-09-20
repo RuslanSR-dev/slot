@@ -9,8 +9,13 @@ import sys
 
 from booking.app import Settings, create_app
 
-# The schema does not depend on settings; these values are never contacted.
-SETTINGS = Settings(database_url="postgresql+psycopg://unused:unused@localhost:1/unused")
+# The schema does not depend on settings; these values are never contacted
+# and nothing is signed here.
+UNUSED = "unused"
+SETTINGS = Settings(
+    database_url="postgresql+psycopg://unused:unused@localhost:1/unused",
+    auth_secret=UNUSED,
+)
 
 
 def main() -> None:

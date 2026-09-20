@@ -4,28 +4,31 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from .conftest import NOW, PENDING_TTL, FixedClock
+from .conftest import DEFAULT_CLIENT, DEFAULT_MASTER, NOW, PENDING_TTL, FixedClock, auth
 
 HOUR = timedelta(hours=1)
 PRICE = 150_000
 
 
-def create_slot(client: TestClient, master_id: str = "anna", hours_from_now: int = 1) -> Any:
+def create_slot(
+    client: TestClient, master_id: str = DEFAULT_MASTER, hours_from_now: int = 1
+) -> Any:
+    """Who the master is comes from the token, so the slot needs that master's token."""
     response = client.post(
         "/slots",
         json={
-            "master_id": master_id,
             "starts_at": (NOW + hours_from_now * HOUR).isoformat(),
             "ends_at": (NOW + (hours_from_now + 1) * HOUR).isoformat(),
             "price_minor": PRICE,
         },
+        headers=auth(master_id, "master"),
     )
     assert response.status_code == 201, response.text
     return response.json()
 
 
-def book(client: TestClient, slot_id: str, client_id: str = "client-1") -> Any:
-    return client.post("/bookings", json={"slot_id": slot_id, "client_id": client_id})
+def book(client: TestClient, slot_id: str, client_id: str = DEFAULT_CLIENT) -> Any:
+    return client.post("/bookings", json={"slot_id": slot_id}, headers=auth(client_id))
 
 
 def slot_is_available(client: TestClient, slot_id: str) -> bool:
@@ -56,11 +59,11 @@ class TestSlots:
         response = client.post(
             "/slots",
             json={
-                "master_id": "anna",
                 "starts_at": starts_at.isoformat(),
                 "ends_at": ends_at.isoformat(),
                 "price_minor": PRICE,
             },
+            headers=auth(DEFAULT_MASTER, "master"),
         )
 
         assert response.status_code == 422
@@ -74,31 +77,33 @@ class TestSlots:
             pytest.param({"price_minor": None}, id="no-price"),
             pytest.param({"price_minor": 1_000_000_001}, id="price-above-limit"),
             pytest.param({"price_minor": 2**31}, id="price-beyond-database-integer"),
-            pytest.param({"master_id": "anna\x00"}, id="nul-byte-in-id"),
-            pytest.param({"master_id": "anna smith"}, id="space-in-id"),
         ],
     )
     def test_malformed_slot_is_rejected(
         self, client: TestClient, body_change: dict[str, Any]
     ) -> None:
         body = {
-            "master_id": "anna",
             "starts_at": (NOW + HOUR).isoformat(),
             "ends_at": (NOW + 2 * HOUR).isoformat(),
             "price_minor": PRICE,
         } | body_change
 
-        assert client.post("/slots", json=body).status_code == 422
+        assert (
+            client.post("/slots", json=body, headers=auth(DEFAULT_MASTER, "master")).status_code
+            == 422
+        )
 
     def test_price_at_the_limit_is_accepted(self, client: TestClient) -> None:
         body = {
-            "master_id": "anna",
             "starts_at": (NOW + HOUR).isoformat(),
             "ends_at": (NOW + 2 * HOUR).isoformat(),
             "price_minor": 1_000_000_000,
         }
 
-        assert client.post("/slots", json=body).status_code == 201
+        assert (
+            client.post("/slots", json=body, headers=auth(DEFAULT_MASTER, "master")).status_code
+            == 201
+        )
 
     @pytest.mark.parametrize("master_id", ["\x00", "anna\x00", "a" * 65, ""])
     def test_listing_with_a_malformed_master_id_is_rejected(
