@@ -18,6 +18,9 @@ ALL = sorted(SERVICES)
             id="two-services",
         ),
         pytest.param(["services/notifier/src/notifier/consumer.py"], ["notifier"], id="notifier"),
+        pytest.param(
+            ["services/quality-hub/src/quality_hub/flakiness.py"], [], id="library-runs-in-checks"
+        ),
         pytest.param(["contracts/pacts/booking-payments.json"], ["payments"], id="pact-provider"),
         pytest.param(["contracts/pacts/payments-booking.json"], ["booking"], id="pact-reverse"),
         pytest.param(["contracts/paystub/openapi.yaml"], ["payments"], id="external-api"),

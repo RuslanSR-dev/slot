@@ -6,8 +6,12 @@
 
 SERVICES ?= booking payments notifier
 SERVICE_DIRS = $(addprefix services/,$(SERVICES))
-# Every Python project in the repo: services plus the system smoke tests.
-PROJECTS = $(SERVICE_DIRS) smoke
+# Libraries: code with the same gates as a service, but without an HTTP API, a
+# database or a container - so no component tests, no schema and no contracts.
+LIBRARIES ?= quality-hub
+LIBRARY_DIRS = $(addprefix services/,$(LIBRARIES))
+# Every Python project in the repo: services, libraries and the system smoke tests.
+PROJECTS = $(SERVICE_DIRS) $(LIBRARY_DIRS) smoke
 
 export SLOT_BUILD_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 
@@ -75,9 +79,12 @@ typecheck: ## Gate: strict typing
 
 test-unit: ## Gate: unit tests (fast, no Docker)
 	@$(call in_each,$(SERVICE_DIRS),uv run pytest tests/unit --junitxml=reports/junit-unit.xml)
+	# A library has no component level, so its coverage threshold is checked here.
+	@$(call in_each,$(LIBRARY_DIRS),uv run pytest tests/unit --cov --cov-report=term-missing \
+		--junitxml=reports/junit-unit.xml)
 
 test-mutation: ## Gate: mutation score of the domain rules (do the tests notice broken logic?)
-	@$(call in_each,$(SERVICE_DIRS),rm -rf mutants && mkdir -p reports && \
+	@$(call in_each,$(SERVICE_DIRS) $(LIBRARY_DIRS),rm -rf mutants && mkdir -p reports && \
 		(uv run mutmut run > reports/mutmut-run.log 2>&1 || \
 			(tail -20 reports/mutmut-run.log; exit 1)) && \
 		uv run mutmut export-cicd-stats > /dev/null && uv run python tools/mutation_gate.py)

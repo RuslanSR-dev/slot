@@ -23,6 +23,9 @@ EXTERNAL_API_USERS = {"contracts/paystub/": ("payments",), "contracts/notifygw/"
 EVENT_PARTIES = ("booking", "notifier")
 # Cannot change the behaviour of any service.
 IRRELEVANT = ("docs/", "README.md", "CLAUDE.md", ".gitignore", "smoke/")
+# Libraries live under services/ but have no component job of their own: their
+# gates (lint, types, unit, mutation) are in `checks`, which always runs.
+LIBRARIES = ("quality-hub",)
 
 
 def affected_services(paths: Iterable[str]) -> list[str]:
@@ -31,6 +34,8 @@ def affected_services(paths: Iterable[str]) -> list[str]:
         if path.startswith(IRRELEVANT):
             continue
         parts = path.split("/")
+        if parts[0] == "services" and len(parts) > 2 and parts[1] in LIBRARIES:
+            continue
         if parts[0] == "services" and len(parts) > 2 and parts[1] in SERVICES:
             affected.add(parts[1])
         elif path.startswith("contracts/events/"):
