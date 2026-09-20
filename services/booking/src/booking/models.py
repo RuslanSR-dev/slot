@@ -39,6 +39,9 @@ class Booking(Base):
     __table_args__ = (
         CheckConstraint(f"status IN ({_sql_list(BookingStatus)})", name="ck_bookings_status"),
         Index("ix_bookings_slot_id", "slot_id"),
+        # "My bookings" asks for every booking of one client; without this it
+        # is a sequential scan over the whole table.
+        Index("ix_bookings_client_id", "client_id"),
         Index(
             ACTIVE_SLOT_INDEX,
             "slot_id",

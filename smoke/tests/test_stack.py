@@ -21,6 +21,7 @@ import pytest
 BOOKING_URL = os.environ.get("SLOT_BOOKING_URL", "http://127.0.0.1:8000")
 PAYMENTS_URL = os.environ.get("SLOT_PAYMENTS_URL", "http://127.0.0.1:8001")
 NOTIFIER_URL = os.environ.get("SLOT_NOTIFIER_URL", "http://127.0.0.1:8002")
+WEB_URL = os.environ.get("SLOT_WEB_URL", "http://127.0.0.1:8003")
 # The notification travels through an outbox, a broker and a worker, so it
 # arrives a moment later than the answer to the request (ADR-0010).
 EVENTUALLY = 20.0
@@ -29,7 +30,14 @@ WEBHOOK_SECRET = os.environ.get("SLOT_PAYSTUB_WEBHOOK_SECRET", "local-webhook-se
 EXPECTED_BUILD_SHA = os.environ.get("SLOT_EXPECTED_BUILD_SHA") or None
 # GitHub Actions and most CI systems set CI=true.
 IN_CI = os.environ.get("CI") == "true"
-SERVICES = {"booking": BOOKING_URL, "payments": PAYMENTS_URL, "notifier": NOTIFIER_URL}
+SERVICES = {
+    "booking": BOOKING_URL,
+    "payments": PAYMENTS_URL,
+    "notifier": NOTIFIER_URL,
+    "web": WEB_URL,
+}
+# The session cookie web sets. Smoke knows the name, not how it is signed.
+SESSION_COOKIE = "slot_session"
 
 
 def wait_until(condition: Callable[[], Any], timeout: float, what: str) -> Any:
@@ -43,6 +51,24 @@ def wait_until(condition: Callable[[], Any], timeout: float, what: str) -> Any:
             raise AssertionError(f"{what} did not happen within {timeout}s")
         time.sleep(0.1)
     return result
+
+
+def sign_in(name: str, role: str) -> dict[str, str]:
+    """A token, obtained the way a person gets one: by logging in on the site.
+
+    Smoke knows no secrets of the token format - it asks the system for a
+    session and passes it on, exactly like a browser would.
+    """
+    response = httpx2.post(
+        f"{WEB_URL}/login",
+        data={"name": name, "role": role},
+        follow_redirects=False,
+        timeout=10,
+    )
+    assert response.status_code == 303, response.text
+    token = response.cookies.get(SESSION_COOKIE)
+    assert token, "logging in must set a session"
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -100,23 +126,23 @@ def test_booking_is_paid_confirmed_and_the_client_is_told(
 ) -> None:
     """booking -> payments -> PayStub -> webhook -> booking -> outbox -> Redis -> notifier."""
     starts_at = datetime.now(UTC) + timedelta(days=1)
+    master = sign_in(f"smoke-{uuid.uuid4().hex[:12]}", "master")
+    client = sign_in("smoke-client", "client")
     slot = booking.post(
         "/slots",
         json={
-            "master_id": f"smoke-{uuid.uuid4().hex[:12]}",
             "starts_at": starts_at.isoformat(),
             "ends_at": (starts_at + timedelta(hours=1)).isoformat(),
             "price_minor": 150_000,
         },
+        headers=master,
     )
     assert slot.status_code == 201, slot.text
-    created = booking.post(
-        "/bookings", json={"slot_id": slot.json()["id"], "client_id": "smoke-client"}
-    )
+    created = booking.post("/bookings", json={"slot_id": slot.json()["id"]}, headers=client)
     assert created.status_code == 201, created.text
     booking_id = created.json()["id"]
 
-    payment = booking.post(f"/bookings/{booking_id}/payment")
+    payment = booking.post(f"/bookings/{booking_id}/payment", headers=client)
     assert payment.status_code == 200, payment.text
     assert payment.json()["checkout_url"], "the provider stub must have been reached"
 
@@ -135,7 +161,9 @@ def test_booking_is_paid_confirmed_and_the_client_is_told(
     # Since ADR-0010 the webhook only records the event: confirming the booking
     # and telling the client both happen after the answer to PayStub.
     wait_until(
-        lambda: booking.get(f"/bookings/{booking_id}").json()["status"] == "confirmed",
+        lambda: (
+            booking.get(f"/bookings/{booking_id}", headers=client).json()["status"] == "confirmed"
+        ),
         timeout=EVENTUALLY,
         what="the booking to be confirmed",
     )

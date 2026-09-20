@@ -33,8 +33,13 @@ ALL = sorted(SERVICES)
             ["booking", "notifier"],
             id="event-consumer-contract",
         ),
+        pytest.param(["services/web/src/web/app.py"], ["web"], id="web"),
+        pytest.param(
+            ["contracts/auth/token.v1.json"], ["booking", "web"], id="token-format-contract"
+        ),
         pytest.param(["docs/roadmap.md", "README.md"], [], id="docs-only"),
         pytest.param(["smoke/tests/test_stack.py"], [], id="smoke-runs-anyway"),
+        pytest.param(["e2e/tests/test_booking_flow.py"], [], id="e2e-runs-anyway"),
         pytest.param([], [], id="nothing-changed"),
     ],
 )

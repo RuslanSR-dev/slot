@@ -10,8 +10,10 @@ from booking.events import BookingEventType
 # Identifiers of other systems: a safe alphabet only. Postgres rejects NUL bytes in
 # text, so an unrestricted string was a 500 (found by fuzzing GET /slots).
 EXTERNAL_ID_PATTERN = r"^[A-Za-z0-9._:@-]+$"
+MAX_EXTERNAL_ID_LENGTH = 64
 ExternalId = Annotated[
-    str, StringConstraints(min_length=1, max_length=64, pattern=EXTERNAL_ID_PATTERN)
+    str,
+    StringConstraints(min_length=1, max_length=MAX_EXTERNAL_ID_LENGTH, pattern=EXTERNAL_ID_PATTERN),
 ]
 # 10 million roubles. Also keeps the value inside a 32-bit Postgres integer:
 # without it a huge price was a 500 (found by fuzzing payments, same bug here).
@@ -19,7 +21,9 @@ MAX_AMOUNT_MINOR = 1_000_000_000
 
 
 class SlotCreate(BaseModel):
-    master_id: ExternalId
+    """Who the master is comes from the token, not from the body: a caller
+    must not be able to publish slots in someone else's name."""
+
     starts_at: AwareDatetime
     ends_at: AwareDatetime
     price_minor: Annotated[int, Field(gt=0, le=MAX_AMOUNT_MINOR, description="Price in kopecks")]
@@ -35,8 +39,9 @@ class SlotOut(BaseModel):
 
 
 class BookingCreate(BaseModel):
+    """The client is taken from the token, for the same reason as the master."""
+
     slot_id: uuid.UUID
-    client_id: ExternalId
 
 
 class BookingOut(BaseModel):
@@ -46,6 +51,25 @@ class BookingOut(BaseModel):
     slot_id: uuid.UUID
     client_id: str
     status: BookingStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class MyBookingOut(BaseModel):
+    """A booking with the slot it is for: what a person needs to see on one page.
+
+    Without the slot fields every list would cost one more request per row,
+    and the interface would have to read a slot that is not its business.
+    """
+
+    id: uuid.UUID
+    slot_id: uuid.UUID
+    client_id: str
+    master_id: str
+    status: BookingStatus
+    starts_at: datetime
+    ends_at: datetime
+    price_minor: int
     created_at: datetime
     updated_at: datetime
 

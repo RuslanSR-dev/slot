@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Вход</h2>
+<p class="muted">
+  Пароля нет: Slot верит имени и подписывает его. Это учебный проект, и такой
+  вход — осознанное упрощение.
+</p>
+<form method="post" action="/login">
+  <label>Имя
+    <input name="name" data-testid="name" autocomplete="off" required>
+  </label>
+  <label>Кто вы
+    <select name="role" data-testid="role">
+      <option value="client">Клиент</option>
+      <option value="master">Мастер</option>
+    </select>
+  </label>
+  <button type="submit" data-testid="login">Войти</button>
+</form>
+{% endblock %}

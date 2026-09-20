@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from booking import events
+from booking.auth import Identity, Role, ensure_owner
 from booking.domain import (
     BookingNotFoundError,
     BookingNotPayableError,
@@ -108,21 +109,72 @@ def _violated_constraint(error: IntegrityError) -> str | None:
 
 
 def get_booking(session: Session, booking_id: uuid.UUID) -> Booking:
+    """Without an owner check: only for the internal endpoint payments calls."""
     booking = session.get(Booking, booking_id)
     if booking is None:
         raise BookingNotFoundError(f"booking {booking_id} does not exist")
     return booking
 
 
+def get_owned_booking(
+    session: Session, booking_id: uuid.UUID, identity: Identity
+) -> tuple[Booking, Slot]:
+    """The booking together with its slot, and only if the caller is a side of it.
+
+    Every path a person can reach goes through here: the rule lives in one
+    place, not in a check repeated in each endpoint (and forgotten in one).
+    """
+    booking = get_booking(session, booking_id)
+    slot = session.get_one(Slot, booking.slot_id)
+    ensure_owner(identity, booking.client_id, slot.master_id)
+    return booking, slot
+
+
+def list_my_bookings(session: Session, identity: Identity) -> list[tuple[Booking, Slot]]:
+    """What the caller is a side of: their own bookings, or those on their slots.
+
+    The same rule as for a single booking, written as a filter: the caller
+    cannot ask for someone else's list, because there is nothing to ask with.
+    """
+    mine = (
+        Booking.client_id == identity.subject
+        if identity.role is Role.CLIENT
+        else Slot.master_id == identity.subject
+    )
+    query = (
+        select(Booking, Slot)
+        .join(Slot, Slot.id == Booking.slot_id)
+        .where(mine)
+        .order_by(Slot.starts_at)
+    )
+    return [(booking, slot) for booking, slot in session.execute(query)]
+
+
+def _is_stale(booking: Booking, now: datetime, pending_ttl: timedelta) -> bool:
+    """Pending past its time: the slot is free again, only nobody has said so yet."""
+    return booking.status == BookingStatus.PENDING and booking.created_at <= now - pending_ttl
+
+
 def get_payable_booking(
-    session: Session, booking_id: uuid.UUID, now: datetime, pending_ttl: timedelta
+    session: Session,
+    booking_id: uuid.UUID,
+    identity: Identity,
+    now: datetime,
+    pending_ttl: timedelta,
 ) -> tuple[Booking, Slot]:
     """A booking can be paid while it is pending and still holds its slot."""
-    booking = get_booking(session, booking_id)
-    if booking.status != BookingStatus.PENDING or booking.created_at <= now - pending_ttl:
+    booking, slot = get_owned_booking(session, booking_id, identity)
+    if booking.status != BookingStatus.PENDING or _is_stale(booking, now, pending_ttl):
         raise BookingNotPayableError(f"booking {booking_id} is {booking.status} and cannot be paid")
-    slot = session.get_one(Slot, booking.slot_id)
     return booking, slot
+
+
+def cancel_booking(
+    session: Session, booking_id: uuid.UUID, identity: Identity, now: datetime
+) -> Booking:
+    """Cancelling is the one write a stranger could do the most damage with."""
+    booking, _ = get_owned_booking(session, booking_id, identity)
+    return change_status(session, booking.id, BookingStatus.CANCELLED, now=now)
 
 
 def change_status(

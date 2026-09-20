@@ -10,6 +10,7 @@ that shows up in review as a line somebody has to justify - which is exactly
 the conversation the gate exists to start.
 """
 
+import json
 import re
 import subprocess
 import tomllib
@@ -20,6 +21,12 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "security" / "gitleaks.toml"
+TOKEN_VECTORS = [
+    vector["token"]
+    for vector in json.loads((REPO_ROOT / "contracts" / "auth" / "token.v1.json").read_text())[
+        "vectors"
+    ]
+]
 
 # Every literal the scanner is allowed to stay silent about. The reason for
 # each one is in security/gitleaks.toml, next to the exclusion itself.
@@ -29,7 +36,17 @@ ALLOWED_SECRETS = frozenset(
         "^test-webhook-secret$",
         "^webhook-secret$",
         "^local-webhook-secret$",
+        "^local-auth-secret$",
+        "^golden-secret-for-the-vectors$",
+        "^component-test-secret$",
+        "^unit-test-secret$",
+        "^test-secret$",
+        "^attacker-secret$",
     }
+    # The recorded token vectors of contracts/auth/token.v1.json, signed with
+    # the golden test secret. Listed by value like everything else, so a real
+    # token can never hide behind "it looks like one of ours".
+    | {"^" + token.replace(".", r"\.") + "$" for token in TOKEN_VECTORS}
 )
 
 # Paths that hold no source of ours: build output, caches, installed
@@ -116,7 +133,9 @@ def test_no_exclusion_matches_everything(config: dict[str, Any]) -> None:
         for entry in allowlists(config)
         if entry.get("regexTarget") == "secret"
         for regex in entry.get("regexes", [])
-        if not (regex.startswith("^") and regex.endswith("$")) or re.search(r"[.*+?]", regex[1:-1])
+        # Escaped characters are literals; only unescaped ones make a shape.
+        if not (regex.startswith("^") and regex.endswith("$"))
+        or re.search(r"[.*+?]", re.sub(r"\\.", "", regex[1:-1]))
     ]
 
     assert loose == []

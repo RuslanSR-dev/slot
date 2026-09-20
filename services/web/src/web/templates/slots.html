@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Слоты мастера {{ master_id }}</h2>
+<p><a href="/bookings" data-testid="to-bookings">Мои брони</a></p>
+{% if not slots %}
+  <p class="muted" data-testid="no-slots">Свободных слотов нет.</p>
+{% endif %}
+{% for slot in slots %}
+  <div class="row slot" data-testid="slot" data-slot-id="{{ slot.id }}">
+    <time datetime="{{ slot.starts_at.isoformat() }}">{{ slot.starts_at.isoformat() }}</time>,
+    {{ slot.price_minor | roubles }} ₽
+    <span class="action">
+      {% if slot.available %}
+        <button type="button"
+                data-testid="book"
+                hx-post="/slots/{{ slot.id }}/book"
+                hx-target="closest .action"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this">Забронировать</button>
+      {% else %}
+        <span class="muted" data-testid="taken">занят</span>
+      {% endif %}
+    </span>
+  </div>
+{% endfor %}
+{% endblock %}

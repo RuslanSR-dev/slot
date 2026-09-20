@@ -17,6 +17,8 @@ from sqlalchemy import Engine, text
 
 from booking.domain import ACTIVE_STATUSES
 
+from .conftest import auth
+
 ROUNDS = 10
 CONCURRENT_REQUESTS = 20
 
@@ -28,7 +30,9 @@ def book_concurrently(base_url: str, slot_id: str, requests: int) -> list[int]:
         with httpx2.Client(base_url=base_url, timeout=30) as http:
             barrier.wait()
             response = http.post(
-                "/bookings", json={"slot_id": slot_id, "client_id": f"client-{client_number}"}
+                "/bookings",
+                json={"slot_id": slot_id},
+                headers=auth(f"client-{client_number}"),
             )
             return response.status_code
 
@@ -54,11 +58,11 @@ def test_only_one_of_concurrent_bookings_wins(
         slot = client.post(
             "/slots",
             json={
-                "master_id": "anna",
                 "starts_at": (now + timedelta(hours=round_number + 1)).isoformat(),
                 "ends_at": (now + timedelta(hours=round_number + 2)).isoformat(),
                 "price_minor": 150_000,
             },
+            headers=auth("anna", "master"),
         ).json()
 
         statuses = Counter(book_concurrently(live_server, slot["id"], CONCURRENT_REQUESTS))

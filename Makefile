@@ -4,14 +4,14 @@
 # Service targets run for every service; narrow them with SERVICES, e.g.
 #   make test-component SERVICES=payments
 
-SERVICES ?= booking payments notifier
+SERVICES ?= booking payments notifier web
 SERVICE_DIRS = $(addprefix services/,$(SERVICES))
 # Libraries: code with the same gates as a service, but without an HTTP API, a
 # database or a container - so no component tests, no schema and no contracts.
 LIBRARIES ?= quality-hub
 LIBRARY_DIRS = $(addprefix services/,$(LIBRARIES))
-# Every Python project in the repo: services, libraries and the system smoke tests.
-PROJECTS = $(SERVICE_DIRS) $(LIBRARY_DIRS) smoke
+# Every Python project in the repo: services, libraries and the system-level ones.
+PROJECTS = $(SERVICE_DIRS) $(LIBRARY_DIRS) smoke e2e
 
 export SLOT_BUILD_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 
@@ -24,11 +24,13 @@ SLOT_PORT_OFFSET ?= 0
 export SLOT_BOOKING_PORT ?= $(shell expr 8000 + $(SLOT_PORT_OFFSET))
 export SLOT_PAYMENTS_PORT ?= $(shell expr 8001 + $(SLOT_PORT_OFFSET))
 export SLOT_NOTIFIER_PORT ?= $(shell expr 8002 + $(SLOT_PORT_OFFSET))
+export SLOT_WEB_PORT ?= $(shell expr 8003 + $(SLOT_PORT_OFFSET))
 export SLOT_NOTIFYGW_PORT ?= $(shell expr 8090 + $(SLOT_PORT_OFFSET))
 # The smoke tests know only URLs, so they follow the ports automatically.
 export SLOT_BOOKING_URL ?= http://127.0.0.1:$(SLOT_BOOKING_PORT)
 export SLOT_PAYMENTS_URL ?= http://127.0.0.1:$(SLOT_PAYMENTS_PORT)
 export SLOT_NOTIFIER_URL ?= http://127.0.0.1:$(SLOT_NOTIFIER_PORT)
+export SLOT_WEB_URL ?= http://127.0.0.1:$(SLOT_WEB_PORT)
 
 # Testcontainers talks to Docker through its API. With Colima the socket is not
 # at the default path, so take it from the active docker context (ADR-0006).
@@ -53,7 +55,7 @@ PACTS = contracts/pacts
 EVENTS = contracts/events/booking.v1.json
 # Contract files the tests write themselves. They must be committed as they
 # are generated, so a changed contract is seen in review.
-GENERATED_CONTRACTS = $(PACTS) contracts/events/consumers
+GENERATED_CONTRACTS = $(PACTS) contracts/events/consumers contracts/auth
 # Repository tools reuse the dev tools of the smoke project: no extra project to maintain.
 TOOLS_RUN = uv run --project smoke --quiet
 
@@ -62,8 +64,8 @@ in_each = for dir in $(1); do echo "--- $$dir"; (cd $$dir && $(2)) || exit 1; do
 
 .PHONY: help install format lint typecheck test-unit test-mutation test-component check \
 	openapi openapi-check openapi-breaking events events-check events-breaking \
-	test-contract base-pacts test-tools fitness changed-services up smoke down logs \
-	security audit secrets
+	test-contract base-pacts test-tools fitness changed-services up smoke e2e \
+	e2e-browser down logs security audit secrets
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -195,6 +197,12 @@ up: ## Build images and start the whole stack, wait until healthy
 smoke: ## Gate: smoke tests of the whole running stack
 	cd smoke && SLOT_EXPECTED_BUILD_SHA=$(SLOT_BUILD_SHA) \
 		uv run pytest tests --junitxml=reports/junit-smoke.xml
+
+e2e-browser: ## Install the browser Playwright drives (once per machine)
+	@cd e2e && uv run playwright install chromium
+
+e2e: e2e-browser ## Gate: the few scenarios that are only real through a browser
+	cd e2e && uv run pytest tests --junitxml=reports/junit-e2e.xml
 
 logs: ## Show stack logs
 	docker compose logs --no-color

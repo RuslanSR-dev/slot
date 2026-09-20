@@ -30,6 +30,7 @@ x-booking: &booking
     SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@booking-db:5432/slot
     SLOT_PAYMENTS_URL: http://payments:8000
     SLOT_REDIS_URL: redis://redis:6379/0
+    SLOT_AUTH_SECRET: ${SLOT_AUTH_SECRET:-local-auth-secret}
     SLOT_HEARTBEAT_FILE: /tmp/heartbeat
 
 x-payments: &payments
@@ -46,6 +47,19 @@ x-payments: &payments
     SLOT_PAYSTUB_WEBHOOK_SECRET: ${SLOT_PAYSTUB_WEBHOOK_SECRET:-local-webhook-secret}
     SLOT_BOOKING_URL: http://booking:8000
     SLOT_HEARTBEAT_FILE: /tmp/heartbeat
+
+x-web: &web
+  <<: *hardened
+  build:
+    context: services/web
+    args:
+      SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+  image: slot-web
+  environment:
+    SLOT_BOOKING_URL: http://booking:8000
+    # The same secret booking verifies with: web signs, booking checks.
+    # One variable, two services - a mismatch means nobody can log in.
+    SLOT_AUTH_SECRET: ${SLOT_AUTH_SECRET:-local-auth-secret}
 
 x-notifier: &notifier
   <<: *hardened
@@ -167,6 +181,16 @@ services:
     depends_on:
       notifier-migrate:
         condition: service_completed_successfully
+
+  # The pages people use. No database of its own: everything it shows comes
+  # from booking over HTTP.
+  web:
+    <<: *web
+    ports:
+      - "127.0.0.1:${SLOT_WEB_PORT:-8003}:8000"
+    depends_on:
+      booking:
+        condition: service_healthy
 
   # Reads the events and sends the notifications. Separate from the API:
   # an HTTP server and a queue consumer have different reasons to restart.

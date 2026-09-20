@@ -85,3 +85,42 @@ regexes = ['''^webhook-secret$''']
 description = "local-webhook-secret: the default of the local stack, so that make up works without a .env; everything that matters overrides SLOT_PAYSTUB_WEBHOOK_SECRET, and the stack listens on localhost only"
 regexTarget = "secret"
 regexes = ['''^local-webhook-secret$''']
+
+[[allowlists]]
+description = "local-auth-secret: the default of the local stack, so that make up works without a .env; the stand overrides SLOT_AUTH_SECRET, and the stack listens on localhost only"
+regexTarget = "secret"
+regexes = ['''^local-auth-secret$''']
+
+[[allowlists]]
+description = "golden-secret-for-the-vectors: signs the recorded token vectors in contracts/auth, which exist so that web and booking cannot drift apart; it signs nothing that runs"
+regexTarget = "secret"
+regexes = ['''^golden-secret-for-the-vectors$''']
+
+[[allowlists]]
+description = "component-test-secret: the auth secret of the component tests, alive only inside a Testcontainers run and never present in any deployed configuration"
+regexTarget = "secret"
+regexes = ['''^component-test-secret$''']
+
+[[allowlists]]
+description = "unit-test-secret: the auth secret of the unit tests, a literal in a test file that never leaves the process it runs in"
+regexTarget = "secret"
+regexes = ['''^unit-test-secret$''']
+
+[[allowlists]]
+description = "test-secret: the auth secret of the token unit tests in booking, a literal that never leaves the process it runs in"
+regexTarget = "secret"
+regexes = ['''^test-secret$''']
+
+[[allowlists]]
+description = "attacker-secret: a deliberately wrong secret used to prove a forged token is rejected; a value whose whole purpose is to fail verification"
+regexTarget = "secret"
+regexes = ['''^attacker-secret$''']
+
+[[allowlists]]
+description = "the three recorded token vectors of contracts/auth/token.v1.json: values signed with the golden test secret, pinned by the contract test so that web and booking cannot drift apart; none of them is valid anywhere the real secret is used"
+regexTarget = "secret"
+regexes = [
+    '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0\.7wHvUKSzyxxlORZ7nHcZ_adNOdQlLBgtA5xKuIQyrsQ$''',
+    '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ\.abEufZQHhyCE92OFf6Mw6BKlIaQ4LW8Q8NRrsPzQhNU$''',
+    '''^v1\.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9\.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY$''',
+]

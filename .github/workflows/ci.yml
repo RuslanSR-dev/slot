@@ -37,7 +37,7 @@ jobs:
         # main always runs everything: the safety net for a wrong impact analysis.
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            services='["booking","notifier","payments"]'
+            services='["booking","notifier","payments","web"]'
           else
             services=$(make -s changed-services)
           fi
@@ -122,6 +122,39 @@ jobs:
         with:
           name: reports-component-${{ matrix.service }}
           path: services/${{ matrix.service }}/reports/
+          if-no-files-found: warn
+
+  e2e:
+    name: e2e (browser, only the scenarios that need one)
+    # Always runs: it is the only level where a whole path of a person is checked.
+    needs: checks
+    runs-on: ubuntu-latest
+    # Budget: the same stack as stack-smoke (10 minutes of build and start)
+    # plus about a minute to fetch the browser. The four scenarios themselves
+    # take seconds - if this job ever needs more time, the answer is fewer e2e.
+    timeout-minutes: 12
+    env:
+      SLOT_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: make install
+      - run: make up
+      - run: make e2e
+      - name: Stack logs
+        if: failure()
+        run: make logs
+      - name: Tear down
+        if: always()
+        run: make down
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          # Includes the Playwright trace of every scenario that failed.
+          name: reports-e2e
+          path: e2e/reports/
           if-no-files-found: warn
 
   stack-smoke:

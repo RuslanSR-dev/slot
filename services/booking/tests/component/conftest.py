@@ -1,5 +1,9 @@
 """Component level: the service with a real Postgres; neighbours are WireMock stubs (ADR-0006)."""
 
+import base64
+import hashlib
+import hmac
+import json
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -27,8 +31,31 @@ POSTGRES_IMAGE = "postgres:18-alpine"
 REDIS_IMAGE = "redis:8.2-alpine"
 NOW = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 PENDING_TTL = timedelta(minutes=15)
+DAY = timedelta(days=1)
 # Short, so tests of a hanging neighbour take a fraction of a second.
 PAYMENTS_TIMEOUT = 0.5
+# The secret the web service would share with booking. Tokens are built here
+# by hand, not by booking's own code: booking can only verify them.
+AUTH_SECRET = "component-test-secret"
+DEFAULT_CLIENT = "client-1"
+DEFAULT_MASTER = "anna"
+
+
+def _b64(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).replace(b"=", b"").decode()
+
+
+def token(subject: str, role: str, expires_at: datetime | None = None) -> str:
+    claims = {"sub": subject, "role": role, "exp": int((expires_at or NOW + DAY).timestamp())}
+    payload = _b64(json.dumps(claims).encode())
+    signature = _b64(
+        hmac.new(AUTH_SECRET.encode(), f"v1.{payload}".encode(), hashlib.sha256).digest()
+    )
+    return f"v1.{payload}.{signature}"
+
+
+def auth(subject: str, role: str = "client", expires_at: datetime | None = None) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token(subject, role, expires_at)}"}
 
 
 def wait_until(condition: Callable[[], bool], timeout: float, what: str) -> None:
@@ -134,6 +161,7 @@ def clock() -> FixedClock:
 def app(database_url: str, engine: Engine, clock: FixedClock, payments_stub: WireMock) -> FastAPI:
     settings = Settings(
         database_url=database_url,
+        auth_secret=AUTH_SECRET,
         payments_url=payments_stub.base_url,
         payments_timeout=PAYMENTS_TIMEOUT,
         # A pool larger than the race test's concurrency, so requests do not
@@ -146,6 +174,14 @@ def app(database_url: str, engine: Engine, clock: FixedClock, payments_stub: Wir
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
+    """Signed in as a client: the identity most requests are made with."""
+    with TestClient(app, headers=auth(DEFAULT_CLIENT)) as client:
+        yield client
+
+
+@pytest.fixture
+def anonymous(app: FastAPI) -> Iterator[TestClient]:
+    """Nobody: no token at all."""
     with TestClient(app) as client:
         yield client
 
