@@ -17,5 +17,6 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "PT", "RUF"]
 "test_*.py" = ["S101"]
 # git is a trusted executable called with a fixed argument list.
 "changed_services.py" = ["S603", "S607"]
+"test_secret_allowlist.py" = ["S101", "S603", "S607"]
 # uv is the same case: a fixed argument list, no shell, no input from outside.
 "dependency_audit.py" = ["S603", "S607"]

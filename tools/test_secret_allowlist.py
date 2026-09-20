@@ -11,6 +11,7 @@ the conversation the gate exists to start.
 """
 
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -31,12 +32,19 @@ ALLOWED_SECRETS = frozenset(
     }
 )
 
-# Paths that hold no source of ours: build output and installed dependencies.
+# Paths that hold no source of ours: build output, caches, installed
+# dependencies and the working copies of parallel agents.
 ALLOWED_PATHS = frozenset(
     {
         r"(^|/)\.venv/",
         r"(^|/)\.tmp/",
         r"(^|/)\.git/",
+        r"(^|/)\.claude/",
+        r"(^|/)__pycache__/",
+        r"(^|/)\.pytest_cache/",
+        r"(^|/)\.mypy_cache/",
+        r"(^|/)\.ruff_cache/",
+        r"(^|/)\.hypothesis/",
         r"(^|/)mutants/",
         r"(^|/)reports/",
         r"(^|/)node_modules/",
@@ -112,3 +120,24 @@ def test_no_exclusion_matches_everything(config: dict[str, Any]) -> None:
     ]
 
     assert loose == []
+
+
+def test_no_committed_file_is_hidden_by_a_path_exclusion(config: dict[str, Any]) -> None:
+    """The point of the path list is to skip what is not in the repository.
+
+    If a tracked file ever matched one of these patterns, the scanner would
+    stop looking at real source - which is exactly the failure a path
+    exclusion is supposed to be too blunt to cause.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files"],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=REPO_ROOT,
+    ).stdout.split()
+    patterns = [re.compile(path) for entry in allowlists(config) for path in entry.get("paths", [])]
+
+    hidden = [path for path in tracked if any(pattern.search(path) for pattern in patterns)]
+
+    assert hidden == []

@@ -43,15 +43,24 @@ regex = '''\$\{[A-Za-z0-9_]{0,60}(?i:SECRET|PASSWORD|API_?KEY|TOKEN|CREDENTIAL)[
 secretGroup = 1
 keywords = ["secret", "password", "apikey", "api_key", "token", "credential"]
 
-# The only exclusion by path: output of the build and of the tools, which is
-# not our code and is never committed. Without it the scan would walk .venv and
-# report the test fixtures of every dependency.
+# The only exclusion by path: things that are not in the repository at all -
+# build output, caches, installed dependencies and the working copies of
+# parallel agents. Without it the result of the scan depends on what happens to
+# lie on the disk, and a gate that answers differently on two machines is worse
+# than no gate. tools/test_secret_allowlist.py proves no committed file matches
+# any of these patterns, so nothing of ours can hide here.
 [[allowlists]]
-description = "build output and installed dependencies: not our code, and not committed"
+description = "not part of the repository: build output, caches, dependencies, agent worktrees"
 paths = [
     '''(^|/)\.venv/''',
     '''(^|/)\.tmp/''',
     '''(^|/)\.git/''',
+    '''(^|/)\.claude/''',
+    '''(^|/)__pycache__/''',
+    '''(^|/)\.pytest_cache/''',
+    '''(^|/)\.mypy_cache/''',
+    '''(^|/)\.ruff_cache/''',
+    '''(^|/)\.hypothesis/''',
     '''(^|/)mutants/''',
     '''(^|/)reports/''',
     '''(^|/)node_modules/''',
