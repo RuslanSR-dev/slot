@@ -27,6 +27,9 @@ TMP = .tmp
 PACTS = contracts/pacts
 # The published shape of the booking event (ADR-0010).
 EVENTS = contracts/events/booking.v1.json
+# Contract files the tests write themselves. They must be committed as they
+# are generated, so a changed contract is seen in review.
+GENERATED_CONTRACTS = $(PACTS) contracts/events/consumers
 # Repository tools reuse the dev tools of the smoke project: no extra project to maintain.
 TOOLS_RUN = uv run --project smoke --quiet
 
@@ -66,7 +69,7 @@ test-mutation: ## Gate: mutation score of the domain rules (do the tests notice 
 
 test-contract: ## Gate: consumer contract tests; the pact files they write must be committed
 	@$(call in_each,$(SERVICE_DIRS),uv run pytest tests/contract --junitxml=reports/junit-contract.xml)
-	@if git status --porcelain -- contracts | grep .; then \
+	@if git status --porcelain -- $(GENERATED_CONTRACTS) | grep .; then \
 		echo "contract files changed: review the new contract and commit it"; exit 1; fi
 
 base-pacts: ## Copy the pact files of BASE_REF: providers are verified against them too

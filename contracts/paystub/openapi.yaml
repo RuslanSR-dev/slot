@@ -4,7 +4,7 @@
 openapi: 3.1.0
 info:
   title: PayStub API
-  version: "1.4.0"
+  version: "1.5.0"
   description: |
     Charges are created by the merchant and paid by the customer on the
     checkout page. The result arrives as a webhook.
@@ -47,6 +47,39 @@ paths:
           description: Missing or invalid API key.
         "422":
           description: Invalid request.
+        "5XX":
+          description: Temporary failure. Retry with the same idempotency key.
+  /v1/refunds:
+    post:
+      operationId: createRefund
+      summary: Refund a charge
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A repeated key returns the refund created by the first request.
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefundRequest"
+      responses:
+        "201":
+          description: Refund accepted, or returned for a repeated idempotency key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Refund"
+        "401":
+          description: Missing or invalid API key.
+        "404":
+          description: No such charge.
+        "422":
+          description: Invalid request, for example an amount above the charge.
         "5XX":
           description: Temporary failure. Retry with the same idempotency key.
 webhooks:
@@ -104,6 +137,28 @@ components:
         checkout_url:
           type: string
           format: uri
+    RefundRequest:
+      type: object
+      required: [charge_id, amount]
+      additionalProperties: false
+      properties:
+        charge_id:
+          type: string
+          pattern: "^ch_"
+        amount:
+          type: integer
+          minimum: 1
+          description: Amount in minor units, at most the amount of the charge.
+    Refund:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          pattern: "^rf_"
+        status:
+          type: string
+          enum: [pending, succeeded, failed]
     Event:
       type: object
       required: [id, type, data]

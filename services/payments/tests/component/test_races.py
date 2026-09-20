@@ -18,6 +18,7 @@ from sqlalchemy import Engine, text
 from .conftest import (
     CONFIRM,
     create_payment,
+    outbox,
     paystub_event,
     send_webhook,
     stub_booking_confirm,
@@ -58,16 +59,28 @@ def test_concurrent_requests_for_one_booking_create_one_payment(
 
 
 def test_concurrent_copies_of_one_event_confirm_the_booking_once(
-    client: TestClient, live_server: str, stubs: WireMock
+    client: TestClient,
+    live_server: str,
+    stubs: WireMock,
+    engine: Engine,
+    relay: Callable[[], int],
 ) -> None:
+    """Simultaneous duplicates are separated by the primary key, not by luck.
+
+    Since ADR-0010 the winner does not call booking inside its transaction,
+    so what the losers must not do is write a second command.
+    """
     stub_charge_created(stubs)
     payment = create_payment(client, uuid.UUID(int=42)).json()
-    # A slow booking keeps the first copy's transaction open while the others arrive.
-    stub_booking_confirm(stubs, delay_ms=200)
+    stub_booking_confirm(stubs)
     event = paystub_event(payment["id"])
 
     responses = all_at_once(live_server, lambda http: send_webhook(http, event))
 
     outcomes = Counter(r.json()["outcome"] for r in responses)
     assert outcomes == Counter({"processed": 1, "duplicate": CONCURRENT_REQUESTS - 1})
+    assert [command["topic"] for command in outbox(engine)] == ["booking.confirm"]
+
+    relay()
+
     assert len(stubs.received("POST", CONFIRM, pattern=True)) == 1

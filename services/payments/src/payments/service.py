@@ -9,16 +9,15 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from payments.booking_client import BookingClient
 from payments.domain import (
-    BookingRejectedError,
+    CONFIRM_BOOKING,
     PaymentConflictError,
     PaymentNotFoundError,
     PaymentStatus,
     can_transition,
     target_status,
 )
-from payments.models import ONE_PAYMENT_PER_BOOKING, Payment, ProviderEvent
+from payments.models import ONE_PAYMENT_PER_BOOKING, OutboxMessage, Payment, ProviderEvent
 from payments.paystub import PayStubClient
 
 WebhookOutcome = Literal["processed", "duplicate", "ignored"]
@@ -85,7 +84,6 @@ def get_payment(session: Session, payment_id: uuid.UUID) -> Payment:
 
 def handle_webhook(
     session: Session,
-    booking: BookingClient,
     event_id: str,
     event_type: str,
     reference: str,
@@ -95,6 +93,10 @@ def handle_webhook(
 
     Answering non-2xx makes the provider retry, so an error is returned only
     when a retry can help. Anything a retry cannot fix is acknowledged.
+
+    Confirming the booking is not done here: the command goes into the outbox
+    and the relay delivers it, so no transaction waits for a neighbour's
+    answer (ADR-0010).
     """
     target = target_status(event_type)
     if target is None:
@@ -121,16 +123,16 @@ def handle_webhook(
     payment.status = target
     payment.updated_at = now
     if target == PaymentStatus.SUCCEEDED:
-        try:
-            # Deliberately inside the transaction: if booking is unavailable the
-            # whole event rolls back and the provider's retry finds it unprocessed.
-            # The outbox pattern replaces this in iteration 3 (ADR-0008).
-            booking.confirm(payment.booking_id)
-        except BookingRejectedError:
-            payment.needs_refund = True
-        except Exception:
-            session.rollback()
-            raise
+        session.add(
+            OutboxMessage(
+                topic=CONFIRM_BOOKING,
+                payload={
+                    "payment_id": str(payment.id),
+                    "booking_id": str(payment.booking_id),
+                },
+            )
+        )
+    # One transaction: the payment is succeeded and the command exists, or neither.
     session.commit()
     return "processed"
 

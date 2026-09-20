@@ -359,16 +359,6 @@
               }
             },
             "description": "Unprocessable Content"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorOut"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           }
         },
         "summary": "Paystub Webhook"

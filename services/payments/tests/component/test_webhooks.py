@@ -1,14 +1,23 @@
-"""PayStub webhooks: signed, delivered at least once, sometimes out of order."""
+"""PayStub webhooks: signed, delivered at least once, sometimes out of order.
+
+Since ADR-0010 the webhook does not call booking itself. It records the
+event and writes a command into the outbox; the relay delivers it. So the
+tests here run the relay wherever the old ones expected a neighbour to have
+been called already.
+"""
 
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine
 
 from .conftest import (
     CONFIRM,
     create_payment,
+    outbox,
     paystub_event,
     send_webhook,
     stub_booking_confirm,
@@ -32,8 +41,13 @@ def status_of(client: TestClient, payment: Any) -> Any:
 
 
 class TestSuccessfulCharge:
-    def test_payment_succeeds_and_booking_is_confirmed(
-        self, client: TestClient, stubs: WireMock, payment: Any
+    def test_payment_succeeds_and_the_confirmation_is_handed_to_the_relay(
+        self,
+        client: TestClient,
+        stubs: WireMock,
+        payment: Any,
+        engine: Engine,
+        relay: Callable[[], int],
     ) -> None:
         stub_booking_confirm(stubs)
 
@@ -42,28 +56,44 @@ class TestSuccessfulCharge:
         assert response.status_code == 200
         assert response.json() == {"outcome": "processed"}
         assert status_of(client, payment)["status"] == "succeeded"
+        # The answer to PayStub did not wait for booking: the command is here.
+        [command] = outbox(engine)
+        assert command["topic"] == "booking.confirm"
+        assert confirmations(stubs) == 0
+
+        assert relay() == 1
+
         [confirm] = stubs.received("POST", CONFIRM, pattern=True)
         assert confirm["url"] == f"/internal/bookings/{payment['booking_id']}/confirm"
+        assert outbox(engine)[0]["published_at"] is not None
 
     def test_failed_charge_does_not_confirm_the_booking(
-        self, client: TestClient, stubs: WireMock, payment: Any
+        self,
+        client: TestClient,
+        stubs: WireMock,
+        payment: Any,
+        engine: Engine,
+        relay: Callable[[], int],
     ) -> None:
         response = send_webhook(client, paystub_event(payment["id"], "charge.failed"))
 
         assert response.json() == {"outcome": "processed"}
         assert status_of(client, payment)["status"] == "failed"
+        assert outbox(engine) == []
+        assert relay() == 0
         assert confirmations(stubs) == 0
 
 
 class TestDeliveredMoreThanOnce:
     def test_same_event_twice_confirms_the_booking_once(
-        self, client: TestClient, stubs: WireMock, payment: Any
+        self, client: TestClient, stubs: WireMock, payment: Any, relay: Callable[[], int]
     ) -> None:
         stub_booking_confirm(stubs)
         event = paystub_event(payment["id"])
 
         first = send_webhook(client, event)
         second = send_webhook(client, event)
+        relay()
 
         assert first.json() == {"outcome": "processed"}
         assert second.status_code == 200, "a repeat must be acknowledged, or PayStub keeps retrying"
@@ -71,12 +101,13 @@ class TestDeliveredMoreThanOnce:
         assert confirmations(stubs) == 1
 
     def test_second_success_event_for_a_paid_payment_changes_nothing(
-        self, client: TestClient, stubs: WireMock, payment: Any
+        self, client: TestClient, stubs: WireMock, payment: Any, relay: Callable[[], int]
     ) -> None:
         stub_booking_confirm(stubs)
         send_webhook(client, paystub_event(payment["id"]))
 
         response = send_webhook(client, paystub_event(payment["id"]))
+        relay()
 
         assert response.json() == {"outcome": "ignored"}
         assert confirmations(stubs) == 1
@@ -101,34 +132,39 @@ class TestBookingSide:
             pytest.param({"fault": "CONNECTION_RESET_BY_PEER"}, id="connection-reset"),
         ],
     )
-    def test_booking_unavailable_makes_provider_retry_and_the_retry_succeeds(
-        self, client: TestClient, stubs: WireMock, payment: Any, failure: dict[str, Any]
+    def test_booking_unavailable_no_longer_makes_the_provider_retry(
+        self,
+        client: TestClient,
+        stubs: WireMock,
+        payment: Any,
+        engine: Engine,
+        relay: Callable[[], int],
+        failure: dict[str, Any],
     ) -> None:
-        """Nothing is recorded on failure, so the provider's retry is processed (ADR-0008)."""
-        event = paystub_event(payment["id"])
+        """This is what ADR-0010 changed, and the change is deliberate.
+
+        Before, the confirmation happened inside the webhook's transaction: a
+        neighbour that was down meant `503` and another delivery from PayStub.
+        Now the event is safely recorded and the command waits in the outbox,
+        so PayStub is done and the retrying is our own business.
+        """
         stub_booking_confirm(stubs, **failure)
-        failed = send_webhook(client, event)
+
+        accepted = send_webhook(client, paystub_event(payment["id"]))
+
+        assert accepted.status_code == 200
+        assert accepted.json() == {"outcome": "processed"}
+        assert relay() == 0
+        [command] = outbox(engine)
+        assert command["published_at"] is None
+        assert command["attempts"] == 1
 
         stubs.reset()
         stub_booking_confirm(stubs)
-        retried = send_webhook(client, event)
 
-        assert failed.status_code == 503
-        assert failed.json()["error"] == "booking_unavailable"
-        assert retried.json() == {"outcome": "processed"}
+        assert relay() == 1
+        assert confirmations(stubs) == 1
         assert status_of(client, payment)["status"] == "succeeded"
-
-    def test_booking_that_expired_before_payment_is_marked_for_refund(
-        self, client: TestClient, stubs: WireMock, payment: Any
-    ) -> None:
-        stub_booking_confirm(stubs, status=409, json_body={"error": "invalid_transition"})
-
-        response = send_webhook(client, paystub_event(payment["id"]))
-
-        assert response.json() == {"outcome": "processed"}
-        after = status_of(client, payment)
-        assert after["status"] == "succeeded"
-        assert after["needs_refund"] is True
 
 
 class TestUntrustedInput:

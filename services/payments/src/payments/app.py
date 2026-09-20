@@ -24,9 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.routing import Match
 
 from payments import __version__, service
-from payments.booking_client import BookingClient
 from payments.domain import (
-    BookingUnavailableError,
     DomainError,
     InvalidEventError,
     InvalidSignatureError,
@@ -47,7 +45,6 @@ _ERROR_STATUS: dict[type[DomainError], int] = {
     InvalidEventError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     PaymentNotFoundError: status.HTTP_404_NOT_FOUND,
     ProviderUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
-    BookingUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
 }
 
 
@@ -102,13 +99,11 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     )
     session_factory = sessionmaker(engine)
     paystub = PayStubClient(settings.paystub_url, settings.paystub_api_key, settings.http_timeout)
-    booking = BookingClient(settings.booking_url, settings.http_timeout)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
         paystub.close()
-        booking.close()
         engine.dispose()
 
     app = FastAPI(title="Slot Payments", version=__version__, lifespan=lifespan)
@@ -184,7 +179,9 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
     def get_payment(payment_id: uuid.UUID, session: SessionDep) -> PaymentOut:
         return PaymentOut.model_validate(service.get_payment(session, payment_id))
 
-    @app.post("/webhooks/paystub", responses=errors(401, 422, 503))
+    # No 503 any more: since ADR-0010 nothing here waits for a neighbour, so
+    # there is no failure a retry by PayStub could fix.
+    @app.post("/webhooks/paystub", responses=errors(401, 422))
     def paystub_webhook(
         body: Annotated[bytes, Depends(raw_body)],
         session: SessionDep,
@@ -197,7 +194,7 @@ def create_app(settings: Settings | None = None, clock: Clock = system_clock) ->
         except ValidationError as error:
             raise InvalidEventError(f"not a PayStub event: {error.error_count()} errors") from error
         outcome = service.handle_webhook(
-            session, booking, event.id, event.type, event.data.reference, now=clock()
+            session, event.id, event.type, event.data.reference, now=clock()
         )
         return WebhookAck(outcome=outcome)
 

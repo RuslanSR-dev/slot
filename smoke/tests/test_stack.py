@@ -131,7 +131,14 @@ def test_booking_is_paid_confirmed_and_the_client_is_told(
 
     assert delivered.json() == {"outcome": "processed"}, delivered.text
     assert redelivered.json() == {"outcome": "duplicate"}
-    assert booking.get(f"/bookings/{booking_id}").json()["status"] == "confirmed"
+
+    # Since ADR-0010 the webhook only records the event: confirming the booking
+    # and telling the client both happen after the answer to PayStub.
+    wait_until(
+        lambda: booking.get(f"/bookings/{booking_id}").json()["status"] == "confirmed",
+        timeout=EVENTUALLY,
+        what="the booking to be confirmed",
+    )
 
     # The last step is asynchronous: the event goes through the outbox, the
     # relay and the broker before the notifier sends anything.

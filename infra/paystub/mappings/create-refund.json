@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/refunds",
+    "headers": {
+      "Idempotency-Key": { "matches": ".+" },
+      "Authorization": { "matches": "^Bearer .+" }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "rf_stack",
+      "status": "succeeded"
+    }
+  }
+}

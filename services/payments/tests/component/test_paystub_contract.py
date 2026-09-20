@@ -18,9 +18,9 @@ from jsonschema import Draft202012Validator, ValidationError
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
 
-from payments.paystub import charge_request
+from payments.paystub import charge_request, refund_request
 
-from .conftest import charge_created, paystub_event
+from .conftest import charge_created, paystub_event, refund_created
 
 REPO = Path(__file__).resolve().parents[4]
 SPEC = yaml.safe_load((REPO / "contracts" / "paystub" / "openapi.yaml").read_text())
@@ -50,15 +50,35 @@ def test_schema_check_catches_a_request_paystub_would_reject() -> None:
         )
 
 
+# What each stubbed endpoint of the stack must answer with.
+RESPONSE_SCHEMAS = {"/v1/charges": "Charge", "/v1/refunds": "Refund"}
+
+
 @pytest.mark.parametrize("mapping", STACK_STUBS, ids=lambda path: path.name)
 def test_stack_stub_answers_like_paystub(mapping: Path) -> None:
     stub = json.loads(mapping.read_text())
-    assert stub["request"]["urlPath"] == "/v1/charges"
-    validate(stub["response"]["jsonBody"], "Charge")
+    path = stub["request"]["urlPath"]
+
+    assert path in RESPONSE_SCHEMAS, "a stub of an endpoint PayStub does not have"
+    validate(stub["response"]["jsonBody"], RESPONSE_SCHEMAS[path])
 
 
 def test_charge_our_component_tests_fake_matches_paystub_schema() -> None:
     validate(charge_created(), "Charge")
+
+
+def test_our_refund_request_matches_paystub_schema() -> None:
+    validate(refund_request("ch_1", 150_000), "RefundRequest")
+
+
+def test_schema_check_catches_a_refund_paystub_would_reject() -> None:
+    """A refund of a charge id that is not one: the pattern must catch it."""
+    with pytest.raises(ValidationError):
+        validate(refund_request("not-a-charge", 150_000), "RefundRequest")
+
+
+def test_refund_our_component_tests_fake_matches_paystub_schema() -> None:
+    validate(refund_created(), "Refund")
 
 
 def test_events_our_tests_send_look_like_paystub_events() -> None:

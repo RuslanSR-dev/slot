@@ -16,12 +16,16 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.core.container import DockerContainer
 
 from payments import migrate
 from payments.app import Settings, create_app
+from payments.booking_client import BookingClient
 from payments.domain import sign
+from payments.paystub import PayStubClient
+from payments.relay import process_pending
 
 from .wiremock import WIREMOCK_IMAGE, WireMock
 
@@ -33,6 +37,7 @@ PAYSTUB_API_KEY = "test-api-key"
 # Short, so tests of a hanging neighbour take a fraction of a second.
 HTTP_TIMEOUT = 0.5
 CHARGES = "/v1/charges"
+REFUNDS = "/v1/refunds"
 CONFIRM = r"/internal/bookings/[0-9a-f-]+/confirm"
 
 
@@ -80,7 +85,13 @@ def clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     yield
     if engine is not None:
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE payments, provider_events"))
+            connection.execute(text("TRUNCATE payments, provider_events, outbox_messages"))
+
+
+@pytest.fixture
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Sessions for tests that call the service layer directly, e.g. the relay."""
+    return sessionmaker(engine)
 
 
 @pytest.fixture(scope="session")
@@ -117,6 +128,44 @@ def app(database_url: str, engine: Engine, clock: FixedClock, stubs: WireMock) -
         db_pool_size=25,
     )
     return create_app(settings, clock=clock)
+
+
+@pytest.fixture
+def relay(
+    session_factory: sessionmaker[Session], stubs: WireMock, clock: FixedClock
+) -> Iterator[Callable[[], int]]:
+    """Runs the outbox relay once, the way the relay process does it in a loop."""
+    booking = BookingClient(stubs.base_url, HTTP_TIMEOUT)
+    paystub = PayStubClient(stubs.base_url, PAYSTUB_API_KEY, HTTP_TIMEOUT)
+
+    def run() -> int:
+        with session_factory() as session:
+            return process_pending(session, booking, paystub, clock.now)
+
+    yield run
+    booking.close()
+    paystub.close()
+
+
+def outbox(engine: Engine) -> list[dict[str, Any]]:
+    """Outbox rows in creation order: uuid7 ids sort by time."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT id, topic, payload, published_at, attempts, last_error"
+                " FROM outbox_messages ORDER BY id"
+            )
+        ).mappings()
+        return [dict(row) for row in rows]
+
+
+def stub_refund_created(stubs: WireMock, refund_id: str = "rf_1") -> None:
+    stubs.stub("POST", REFUNDS, status=201, json_body=refund_created(refund_id))
+
+
+def refund_created(refund_id: str = "rf_1") -> dict[str, str]:
+    """PayStub's answer to a refund. Checked against its schema (test_paystub_contract)."""
+    return {"id": refund_id, "status": "succeeded"}
 
 
 @pytest.fixture

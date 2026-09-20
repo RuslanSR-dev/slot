@@ -29,6 +29,10 @@ EVENT_TARGET_STATUS: dict[str, PaymentStatus] = {
 
 SIGNATURE_PREFIX = "sha256="
 
+# Commands this service writes into its outbox for the relay to deliver (ADR-0010).
+CONFIRM_BOOKING = "booking.confirm"
+REFUND_PAYMENT = "payment.refund"
+
 
 class DomainError(Exception):
     """A request that breaks a business rule. `code` goes to the API response."""

@@ -164,6 +164,16 @@ services:
       redis:
         condition: service_healthy
 
+  # Delivers the commands of payments: confirmations and refunds (ADR-0010).
+  payments-relay:
+    <<: *payments
+    command: ["python", "-m", "payments.relay"]
+    healthcheck:
+      disable: true
+    depends_on:
+      payments-migrate:
+        condition: service_completed_successfully
+
   # The external provider, replaced by a stub (contracts/paystub/openapi.yaml).
   paystub:
     image: wiremock/wiremock:3.13.1

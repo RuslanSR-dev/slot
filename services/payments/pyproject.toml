@@ -82,6 +82,7 @@ do_not_mutate = [
     "src/payments/migrations/*",
     "src/payments/models.py",
     "src/payments/paystub.py",
+    "src/payments/relay.py",
     "src/payments/schemas.py",
     "src/payments/service.py",
 ]
