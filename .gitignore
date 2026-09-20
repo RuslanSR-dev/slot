@@ -10,3 +10,6 @@ reports/
 .DS_Store
 mutants/
 .tmp/
+
+# Worktrees of parallel agents: separate checkouts, not part of the repository.
+.claude/
