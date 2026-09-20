@@ -72,6 +72,31 @@ jobs:
           path: services/*/reports/
           if-no-files-found: warn
 
+  security:
+    name: security (dependencies, secrets)
+    # Independent of checks on purpose: a vulnerability is not a consequence of
+    # a lint error, and the answer is wanted in the same minute as the rest.
+    runs-on: ubuntu-latest
+    # Budget set in ADR-0018. The scans themselves take seconds; the budget is
+    # for what we do not control - the Docker registry and the OSV API.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history: a secret deleted in the next commit is still published.
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: make audit
+      - run: make secrets
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports-security
+          path: reports/
+          if-no-files-found: warn
+
   component:
     name: component ${{ matrix.service }} (Postgres, WireMock, fuzzing, provider pacts)
     needs: [changes, checks]

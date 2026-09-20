@@ -1,0 +1,42 @@
+# Vulnerabilities this repository knowingly ships with, and until when.
+#
+# Policy: docs/adr/0018-vulnerability-policy.md
+# Checked by: tools/accepted_risks.py (shape and deadlines) and
+#             tools/dependency_audit.py (an entry must match a real finding).
+#
+# This file is the only way past the dependency gate. A flag in the pipeline is
+# not: it has no author, no reason and no end date. An entry here expires, and
+# when it does the build goes red - a risk accepted until a date is a decision,
+# the same risk accepted forever is a hole nobody renewed.
+#
+# Fields, all required:
+#   id       advisory identifier as the scanner prints it (GHSA-..., CVE-...,
+#            PYSEC-...). It silences that advisory in `package` only.
+#   package  the vulnerable package, not the project that pulls it in.
+#   reason   at least 60 characters: what the risk is and what limits it here
+#            (not reachable from our code, test-only dependency, the input is
+#            never attacker-controlled, a compensating check exists).
+#   owner    a person. "The team" renews nothing.
+#   added    the day the decision was made.
+#   until    the day it must be looked at again. At most 90 days after `added`,
+#            or 30 when `no_fix = true`.
+#   link     https:// address of the advisory.
+#   no_fix   optional, default false. True when no fixed version exists yet: an
+#            upgrade is impossible, so the question to re-ask monthly is
+#            whether a fix has appeared.
+#
+# Example of a complete entry, kept commented out on purpose - the list is
+# empty because nothing is accepted right now, and an empty list is the state
+# we want to keep:
+#
+# [[accepted]]
+# id = "GHSA-0000-0000-0000"
+# package = "example"
+# reason = """
+#   Reachable only from the build step, which never sees data from outside the
+#   repository; the fix needs a major upgrade planned for iteration 7.
+# """
+# owner = "Ruslan"
+# added = 2026-09-20
+# until = 2026-12-19
+# link = "https://github.com/advisories/GHSA-0000-0000-0000"

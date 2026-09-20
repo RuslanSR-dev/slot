@@ -1,0 +1,78 @@
+# Configuration of the secret scanner (gitleaks). Policy: ADR-0018.
+#
+# Run through `make secrets`, over the working tree and over the whole commit
+# history: a secret that was committed and then deleted is still published.
+#
+# The default rules know the shape of other people's tokens - AWS, Stripe,
+# GitHub. They know nothing about ours: `SLOT_PAYSTUB_WEBHOOK_SECRET` is just a
+# string to them. The two rules below cover that class, which is exactly the
+# class this repository is able to leak.
+#
+# Every exclusion says which value it silences and why that value is harmless.
+# tools/test_secret_allowlist.py pins the list, so a new exclusion cannot
+# appear without a reviewed diff: an allowlist that grows quietly turns the
+# scanner into decoration.
+#
+# Exclusions name the value, never the file. A file exclusion silences every
+# secret that will ever be written into that file, including the real one
+# somebody pastes there next year; a value exclusion silences one known string
+# and nothing else. (This version of gitleaks also ignores `condition = "AND"`
+# and treats several criteria in one allowlist as "any of them", which turns a
+# path written next to a value into a file exclusion by accident - checked on
+# 2026-09-20 with v8.30.1.)
+
+title = "slot"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "slot-secret-literal"
+description = "A literal value assigned to a name that says it is a secret"
+# NAME = "value" / "name": "value" - Python, JSON, YAML and .env alike.
+regex = '''(?i)[a-z0-9_.\-]{0,40}(?:secret|password|passwd|api[_\-]?key|auth[_\-]?token|credential)[a-z0-9_.\-]{0,20}["']?\s*[:=]\s*["']([^"'\n]{8,})["']'''
+secretGroup = 1
+keywords = ["secret", "password", "passwd", "apikey", "api_key", "api-key", "token", "credential"]
+
+[[rules]]
+id = "slot-secret-default"
+description = "A shell-style default value for a secret variable, as in compose files"
+# ${SLOT_PAYSTUB_WEBHOOK_SECRET:-value} - a default that ships with the repository
+# is the value every developer and every demo stand actually runs with.
+regex = '''\$\{[A-Za-z0-9_]{0,60}(?i:SECRET|PASSWORD|API_?KEY|TOKEN|CREDENTIAL)[A-Za-z0-9_]{0,20}:-([^}\s]{8,})\}'''
+secretGroup = 1
+keywords = ["secret", "password", "apikey", "api_key", "token", "credential"]
+
+# The only exclusion by path: output of the build and of the tools, which is
+# not our code and is never committed. Without it the scan would walk .venv and
+# report the test fixtures of every dependency.
+[[allowlists]]
+description = "build output and installed dependencies: not our code, and not committed"
+paths = [
+    '''(^|/)\.venv/''',
+    '''(^|/)\.tmp/''',
+    '''(^|/)\.git/''',
+    '''(^|/)mutants/''',
+    '''(^|/)reports/''',
+    '''(^|/)node_modules/''',
+]
+
+[[allowlists]]
+description = "test-api-key: what the component tests send to WireMock, which accepts any key; it opens nothing and exists only inside a container that lives for one test run"
+regexTarget = "secret"
+regexes = ['''^test-api-key$''']
+
+[[allowlists]]
+description = "test-webhook-secret: the shared secret the component tests sign their fake webhooks with; the real one comes from SLOT_PAYSTUB_WEBHOOK_SECRET and is never in the repository"
+regexTarget = "secret"
+regexes = ['''^test-webhook-secret$''']
+
+[[allowlists]]
+description = "webhook-secret: the input of the signature unit tests; the test proves that signing works, so the value has to be a literal and any value would do"
+regexTarget = "secret"
+regexes = ['''^webhook-secret$''']
+
+[[allowlists]]
+description = "local-webhook-secret: the default of the local stack, so that make up works without a .env; everything that matters overrides SLOT_PAYSTUB_WEBHOOK_SECRET, and the stack listens on localhost only"
+regexTarget = "secret"
+regexes = ['''^local-webhook-secret$''']
