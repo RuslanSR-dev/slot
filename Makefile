@@ -11,6 +11,21 @@ PROJECTS = $(SERVICE_DIRS) smoke
 
 export SLOT_BUILD_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 
+# Several stacks can run on one machine at the same time - a worktree, a second
+# branch, a parallel agent. Everything that would collide is derived from two
+# variables, so one offset is enough:
+#   make up smoke down SLOT_PORT_OFFSET=20 COMPOSE_PROJECT_NAME=slot-experiment
+export COMPOSE_PROJECT_NAME ?= slot
+SLOT_PORT_OFFSET ?= 0
+export SLOT_BOOKING_PORT ?= $(shell expr 8000 + $(SLOT_PORT_OFFSET))
+export SLOT_PAYMENTS_PORT ?= $(shell expr 8001 + $(SLOT_PORT_OFFSET))
+export SLOT_NOTIFIER_PORT ?= $(shell expr 8002 + $(SLOT_PORT_OFFSET))
+export SLOT_NOTIFYGW_PORT ?= $(shell expr 8090 + $(SLOT_PORT_OFFSET))
+# The smoke tests know only URLs, so they follow the ports automatically.
+export SLOT_BOOKING_URL ?= http://127.0.0.1:$(SLOT_BOOKING_PORT)
+export SLOT_PAYMENTS_URL ?= http://127.0.0.1:$(SLOT_PAYMENTS_PORT)
+export SLOT_NOTIFIER_URL ?= http://127.0.0.1:$(SLOT_NOTIFIER_PORT)
+
 # Testcontainers talks to Docker through its API. With Colima the socket is not
 # at the default path, so take it from the active docker context (ADR-0006).
 export DOCKER_HOST ?= $(shell docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null)

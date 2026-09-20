@@ -118,7 +118,7 @@ services:
   booking:
     <<: *booking
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${SLOT_BOOKING_PORT:-8000}:8000"
     depends_on:
       booking-migrate:
         condition: service_completed_successfully
@@ -155,7 +155,7 @@ services:
   payments:
     <<: *payments
     ports:
-      - "127.0.0.1:8001:8000"
+      - "127.0.0.1:${SLOT_PAYMENTS_PORT:-8001}:8000"
     depends_on:
       payments-migrate:
         condition: service_completed_successfully
@@ -163,7 +163,7 @@ services:
   notifier:
     <<: *notifier
     ports:
-      - "127.0.0.1:8002:8000"
+      - "127.0.0.1:${SLOT_NOTIFIER_PORT:-8002}:8000"
     depends_on:
       notifier-migrate:
         condition: service_completed_successfully
@@ -233,7 +233,7 @@ services:
   notifygw:
     image: wiremock/wiremock:3.13.1
     ports:
-      - "127.0.0.1:8090:8080"
+      - "127.0.0.1:${SLOT_NOTIFYGW_PORT:-8090}:8080"
     volumes:
       - ./infra/notifygw/mappings:/home/wiremock/mappings:ro
 
