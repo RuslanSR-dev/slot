@@ -65,6 +65,8 @@ jobs:
       - run: make test-mutation
       - run: make openapi-check
       - run: make openapi-breaking
+      - run: make events-check
+      - run: make events-breaking
       - uses: actions/upload-artifact@v4
         if: always()
         with:
