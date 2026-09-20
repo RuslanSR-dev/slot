@@ -25,6 +25,8 @@ OASDIFF = tufin/oasdiff@sha256:0286f138545a39010525df6c1bea67ffafacb384ef800efff
 # Inside the repo, so Docker (also through Colima) can mount it.
 TMP = .tmp
 PACTS = contracts/pacts
+# The published shape of the booking event (ADR-0010).
+EVENTS = contracts/events/booking.v1.json
 # Repository tools reuse the dev tools of the smoke project: no extra project to maintain.
 TOOLS_RUN = uv run --project smoke --quiet
 
@@ -32,8 +34,8 @@ TOOLS_RUN = uv run --project smoke --quiet
 in_each = for dir in $(1); do echo "--- $$dir"; (cd $$dir && $(2)) || exit 1; done
 
 .PHONY: help install format lint typecheck test-unit test-mutation test-component check \
-	openapi openapi-check openapi-breaking test-contract base-pacts test-tools changed-services \
-	up smoke down logs
+	openapi openapi-check openapi-breaking events events-check events-breaking \
+	test-contract base-pacts test-tools changed-services up smoke down logs
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -43,6 +45,7 @@ install: ## Install dependencies from the lock files
 
 format: ## Auto-format the code
 	@$(call in_each,$(PROJECTS),uv run ruff format . && uv run ruff check --fix .)
+	@echo "--- tools" && $(TOOLS_RUN) ruff format tools && $(TOOLS_RUN) ruff check --fix tools
 
 lint: ## Gate: formatting and lint rules
 	@$(call in_each,$(PROJECTS),uv run ruff format --check . && uv run ruff check .)
@@ -98,13 +101,27 @@ openapi-breaking: ## Gate: no breaking API changes against BASE_REF (oasdiff)
 			breaking $(TMP)/base/$$service.json $$spec --fail-on ERR || exit 1; \
 	done
 
+events: ## Regenerate the committed event schema from code
+	@cd services/booking && uv run python tools/export_events.py > $(CURDIR)/$(EVENTS)
+
+events-check: ## Gate: the committed event schema matches the code
+	@cd services/booking && uv run python tools/export_events.py | \
+		diff -u $(CURDIR)/$(EVENTS) - > /dev/null || \
+		(echo "$(EVENTS) is stale: run make events and commit it"; exit 1)
+
+events-breaking: ## Gate: no breaking changes of the event schema against BASE_REF
+	@mkdir -p $(TMP)/base
+	@git show $(BASE_REF):$(EVENTS) > $(TMP)/base/events.json 2>/dev/null || \
+		rm -f $(TMP)/base/events.json
+	@$(TOOLS_RUN) python tools/event_schema_diff.py $(TMP)/base/events.json $(EVENTS)
+
 test-tools: ## Gate: tests of the repository tools (test impact analysis)
 	@$(TOOLS_RUN) pytest tools -q
 
 changed-services: ## Print the services the changes since BASE_REF can break (JSON)
 	@$(TOOLS_RUN) python tools/changed_services.py $(BASE_REF)
 
-check: lint typecheck test-tools test-unit test-contract test-mutation openapi-check ## Everything a PR must pass before Docker is needed
+check: lint typecheck test-tools test-unit test-contract test-mutation openapi-check events-check ## Everything a PR must pass before Docker is needed
 
 up: ## Build images and start the whole stack, wait until healthy
 	docker compose up --detach --build --wait

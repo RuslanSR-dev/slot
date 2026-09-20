@@ -7,6 +7,7 @@ from sqlalchemy import ColumnElement, and_, exists, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from booking import events
 from booking.domain import (
     BookingNotFoundError,
     BookingNotPayableError,
@@ -18,7 +19,7 @@ from booking.domain import (
     ensure_transition,
     ensure_valid_slot,
 )
-from booking.models import ACTIVE_SLOT_INDEX, Booking, Slot
+from booking.models import ACTIVE_SLOT_INDEX, Booking, OutboxMessage, Slot
 
 
 def create_slot(
@@ -68,7 +69,7 @@ def book_slot(
 
     # Stale unpaid bookings stop holding the slot at the moment someone wants it:
     # no scheduler is needed (ADR-0008).
-    session.execute(
+    expired = session.execute(
         update(Booking)
         .where(
             Booking.slot_id == slot_id,
@@ -76,7 +77,10 @@ def book_slot(
             Booking.created_at <= now - pending_ttl,
         )
         .values(status=BookingStatus.EXPIRED, updated_at=now)
-    )
+        .returning(Booking.id, Booking.client_id)
+    ).all()
+    for expired_id, expired_client in expired:
+        _enqueue_event(session, BookingStatus.EXPIRED, expired_id, expired_client, slot, now)
 
     # No "is it free?" check here: two concurrent requests would both pass it.
     # The database index decides who wins (ADR-0005).
@@ -143,6 +147,43 @@ def change_status(
     if changed is None:
         session.rollback()
         raise InvalidTransitionError(f"booking {booking_id} was changed by another request")
+    slot = session.get_one(Slot, booking.slot_id)
+    _enqueue_event(session, target, booking_id, booking.client_id, slot, now)
     session.commit()
     session.refresh(booking)
     return booking
+
+
+def _enqueue_event(
+    session: Session,
+    status: BookingStatus,
+    booking_id: uuid.UUID,
+    client_id: str,
+    slot: Slot,
+    now: datetime,
+) -> None:
+    """Write the event into the outbox, in the caller's transaction (ADR-0010).
+
+    Nothing is published here: the relay does that. The transaction either
+    commits the new state together with the event, or neither of them.
+    """
+    topic = events.event_type(status)
+    if topic is None:
+        return
+    # The message id is also the event id the consumer deduplicates by.
+    message_id = uuid.uuid7()
+    session.add(
+        OutboxMessage(
+            id=message_id,
+            topic=topic,
+            payload=events.build_event(
+                event_id=message_id,
+                status=status,
+                booking_id=booking_id,
+                slot_id=slot.id,
+                client_id=client_id,
+                starts_at=slot.starts_at,
+                occurred_at=now,
+            ),
+        )
+    )

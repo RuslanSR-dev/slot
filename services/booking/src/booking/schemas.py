@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 from booking.domain import BookingStatus
+from booking.events import BookingEventType
 
 # Identifiers of other systems: a safe alphabet only. Postgres rejects NUL bytes in
 # text, so an unrestricted string was a 500 (found by fuzzing GET /slots).
@@ -58,3 +59,23 @@ class PaymentOut(BaseModel):
 class ErrorOut(BaseModel):
     error: str
     detail: str
+
+
+class BookingEventV1(BaseModel):
+    """The published shape of a booking event (contracts/events/booking.v1.json).
+
+    The consumer reads these fields and nothing else. Changing them is a
+    breaking change, which is why the schema is committed and compared with
+    `main` in CI, exactly like the OpenAPI schemas (ADR-0007).
+    """
+
+    event_id: uuid.UUID
+    type: BookingEventType
+    # Literally 1: a type checker needs a constant here. That it is the same 1 as
+    # events.EVENT_VERSION is proven by validating a built event in the unit tests.
+    version: Literal[1]
+    occurred_at: AwareDatetime
+    booking_id: uuid.UUID
+    slot_id: uuid.UUID
+    client_id: ExternalId
+    starts_at: AwareDatetime

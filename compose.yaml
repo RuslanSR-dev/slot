@@ -29,6 +29,7 @@ x-booking: &booking
   environment:
     SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@booking-db:5432/slot
     SLOT_PAYMENTS_URL: http://payments:8000
+    SLOT_REDIS_URL: redis://redis:6379/0
 
 x-payments: &payments
   <<: *hardened
@@ -51,6 +52,23 @@ services:
 
   payments-db:
     <<: *postgres
+
+  # The broker (ADR-0009). `appendonly yes` is not a detail: without it an
+  # event that was published but not yet handled disappears with a restart.
+  redis:
+    <<: *hardened
+    image: redis:8.2-alpine
+    # Without dropped capabilities the entrypoint would switch to this user
+    # itself; we drop them, so the user is set here.
+    user: "999:1000"
+    command: ["redis-server", "--appendonly", "yes", "--save", ""]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
   # One-shot jobs: apply migrations and exit. Services start only after
   # they succeeded, and never run migrations themselves (ADR-0006).
@@ -78,6 +96,21 @@ services:
       booking-migrate:
         condition: service_completed_successfully
 
+  # Publishes the outbox of booking into the broker (ADR-0010). No HTTP port:
+  # whether it is alive is visible in the outbox table, not in a /health call.
+  booking-relay:
+    <<: *booking
+    command: ["python", "-m", "booking.outbox"]
+    # The image checks /health; this process has no HTTP server. That its work
+    # happens at all is proven by the smoke test, not by a healthcheck.
+    healthcheck:
+      disable: true
+    depends_on:
+      booking-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
   payments:
     <<: *payments
     ports:
@@ -91,3 +124,6 @@ services:
     image: wiremock/wiremock:3.13.1
     volumes:
       - ./infra/paystub/mappings:/home/wiremock/mappings:ro
+
+volumes:
+  redis-data:

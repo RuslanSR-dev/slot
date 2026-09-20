@@ -8,6 +8,7 @@ dependencies = [
     "fastapi>=0.115",
     "httpx2>=2.13",
     "psycopg[binary]>=3.2",
+    "redis>=6",
     "sqlalchemy>=2.0",
     "uvicorn>=0.30",
 ]
@@ -21,7 +22,7 @@ dev = [
     "pytest-cov>=5",
     "ruff>=0.6",
     "schemathesis>=4.27",
-    "testcontainers>=4.10",
+    "testcontainers[redis]>=4.10",
 ]
 
 [build-system]
@@ -75,6 +76,7 @@ do_not_mutate = [
     "src/booking/migrate.py",
     "src/booking/migrations/*",
     "src/booking/models.py",
+    "src/booking/outbox.py",
     "src/booking/payments_client.py",
     "src/booking/schemas.py",
     "src/booking/service.py",

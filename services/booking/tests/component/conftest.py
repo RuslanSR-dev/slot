@@ -7,11 +7,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import pytest
+import redis
 import uvicorn
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.orm import Session, sessionmaker
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.community.redis import RedisContainer
 from testcontainers.core.container import DockerContainer
 
 from booking import migrate
@@ -19,8 +22,9 @@ from booking.app import Settings, create_app
 
 from .wiremock import WIREMOCK_IMAGE, WireMock
 
-# Same image as compose.yaml: tests must run against the database we ship with.
+# Same images as compose.yaml: tests must run against what we ship with.
 POSTGRES_IMAGE = "postgres:18-alpine"
+REDIS_IMAGE = "redis:8.2-alpine"
 NOW = datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
 PENDING_TTL = timedelta(minutes=15)
 # Short, so tests of a hanging neighbour take a fraction of a second.
@@ -74,7 +78,34 @@ def clean_tables(request: pytest.FixtureRequest) -> Iterator[None]:
     yield
     if engine is not None:
         with engine.begin() as connection:
-            connection.execute(text("TRUNCATE bookings, slots"))
+            connection.execute(text("TRUNCATE bookings, slots, outbox_messages"))
+
+
+@pytest.fixture
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Sessions for tests that call the service layer directly, e.g. the relay."""
+    return sessionmaker(engine)
+
+
+@pytest.fixture(scope="session")
+def redis_container() -> Iterator[RedisContainer]:
+    with RedisContainer(REDIS_IMAGE) as container:
+        yield container
+
+
+@pytest.fixture
+def redis_url(redis_container: RedisContainer) -> str:
+    host = redis_container.get_container_host_ip()
+    return f"redis://{host}:{redis_container.get_exposed_port(6379)}/0"
+
+
+@pytest.fixture
+def broker(redis_url: str) -> Iterator[redis.Redis]:
+    """A real broker, empty at the start of every test."""
+    client = redis.Redis.from_url(redis_url, decode_responses=True)
+    client.flushall()
+    yield client
+    client.close()
 
 
 @pytest.fixture(scope="session")

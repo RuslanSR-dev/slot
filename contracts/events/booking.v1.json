@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "BookingEventType": {
+      "description": "Published event names. Also the enum in the committed JSON schema.",
+      "enum": [
+        "booking.confirmed",
+        "booking.cancelled",
+        "booking.expired"
+      ],
+      "title": "BookingEventType",
+      "type": "string"
+    }
+  },
+  "description": "The published shape of a booking event (contracts/events/booking.v1.json).\n\nThe consumer reads these fields and nothing else. Changing them is a\nbreaking change, which is why the schema is committed and compared with\n`main` in CI, exactly like the OpenAPI schemas (ADR-0007).",
+  "properties": {
+    "booking_id": {
+      "format": "uuid",
+      "title": "Booking Id",
+      "type": "string"
+    },
+    "client_id": {
+      "maxLength": 64,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:@-]+$",
+      "title": "Client Id",
+      "type": "string"
+    },
+    "event_id": {
+      "format": "uuid",
+      "title": "Event Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "slot_id": {
+      "format": "uuid",
+      "title": "Slot Id",
+      "type": "string"
+    },
+    "starts_at": {
+      "format": "date-time",
+      "title": "Starts At",
+      "type": "string"
+    },
+    "type": {
+      "$ref": "#/$defs/BookingEventType"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "event_id",
+    "type",
+    "version",
+    "occurred_at",
+    "booking_id",
+    "slot_id",
+    "client_id",
+    "starts_at"
+  ],
+  "title": "BookingEventV1",
+  "type": "object"
+}
