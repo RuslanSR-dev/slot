@@ -12,9 +12,11 @@ Run in the stack as `python -m payments.relay`.
 """
 
 import logging
+import os
 import time
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import create_engine, select, update
@@ -124,6 +126,19 @@ def _refund_payment(
     )
 
 
+def touch_heartbeat(path: str | None, now: datetime) -> None:
+    """Say that the loop is still turning.
+
+    A process without an HTTP port has nothing to answer a healthcheck with.
+    Writing the time of every cycle into a file gives the container something
+    to check that is not "the process exists": a loop stuck on a call nobody
+    times out stops updating it.
+    """
+    if path is None:
+        return
+    Path(path).write_text(now.isoformat())
+
+
 def _record_failure(session: Session, message_id: uuid.UUID, error: str) -> None:
     session.execute(
         update(OutboxMessage)
@@ -138,10 +153,13 @@ def run_forever(
     booking: BookingClient,
     paystub: PayStubClient,
     poll: float = POLL_SECONDS,
+    heartbeat: str | None = None,
 ) -> None:  # pragma: no cover - the loop is the process, its body is tested
     while True:
+        now = datetime.now(UTC)
+        touch_heartbeat(heartbeat, now)
         with session_factory() as session:
-            done = process_pending(session, booking, paystub, datetime.now(UTC))
+            done = process_pending(session, booking, paystub, now)
         if done == 0:
             time.sleep(poll)
 
@@ -152,7 +170,9 @@ def main() -> None:  # pragma: no cover - entry point of the relay container
     engine = create_engine(settings.database_url, pool_size=2, pool_pre_ping=True)
     booking = BookingClient(settings.booking_url, settings.http_timeout)
     paystub = PayStubClient(settings.paystub_url, settings.paystub_api_key, settings.http_timeout)
-    run_forever(sessionmaker(engine), booking, paystub)
+    run_forever(
+        sessionmaker(engine), booking, paystub, heartbeat=os.environ.get("SLOT_HEARTBEAT_FILE")
+    )
 
 
 if __name__ == "__main__":

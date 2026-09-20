@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
 import redis
@@ -87,6 +88,19 @@ def publish_pending(
     return published
 
 
+def touch_heartbeat(path: str | None, now: datetime) -> None:
+    """Say that the loop is still turning.
+
+    A process without an HTTP port has nothing to answer a healthcheck with.
+    Writing the time of every cycle into a file gives the container something
+    to check that is not "the process exists": a loop stuck on a call nobody
+    times out stops updating it.
+    """
+    if path is None:
+        return
+    Path(path).write_text(now.isoformat())
+
+
 def _record_failure(session: Session, message_id: object, error: str) -> None:
     session.execute(
         update(OutboxMessage)
@@ -97,11 +111,16 @@ def _record_failure(session: Session, message_id: object, error: str) -> None:
 
 
 def run_forever(
-    session_factory: sessionmaker[Session], publisher: Publisher, poll: float = POLL_SECONDS
+    session_factory: sessionmaker[Session],
+    publisher: Publisher,
+    poll: float = POLL_SECONDS,
+    heartbeat: str | None = None,
 ) -> None:  # pragma: no cover - the loop is the process, its body is tested
     while True:
+        now = datetime.now(UTC)
+        touch_heartbeat(heartbeat, now)
         with session_factory() as session:
-            sent = publish_pending(session, publisher, datetime.now(UTC))
+            sent = publish_pending(session, publisher, now)
         if sent == 0:
             time.sleep(poll)
 
@@ -112,7 +131,7 @@ def main() -> None:  # pragma: no cover - entry point of the relay container
     publisher = RedisPublisher(
         os.environ["SLOT_REDIS_URL"], os.environ.get("SLOT_EVENTS_STREAM", DEFAULT_STREAM)
     )
-    run_forever(sessionmaker(engine), publisher)
+    run_forever(sessionmaker(engine), publisher, heartbeat=os.environ.get("SLOT_HEARTBEAT_FILE"))
 
 
 if __name__ == "__main__":

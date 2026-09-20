@@ -20,6 +20,7 @@ from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 import redis
@@ -47,6 +48,19 @@ MAX_ERROR_LENGTH = 200
 Outcome = Literal["sent", "duplicate", "ignored", "dead", "failed"]
 
 logger = logging.getLogger(__name__)
+
+
+def touch_heartbeat(path: str | None, now: datetime) -> None:
+    """Say that the loop is still turning.
+
+    A process without an HTTP port has nothing to answer a healthcheck with.
+    Writing the time of every cycle into a file gives the container something
+    to check that is not "the process exists": a loop stuck on a call nobody
+    times out stops updating it.
+    """
+    if path is None:
+        return
+    Path(path).write_text(now.isoformat())
 
 
 @dataclass(frozen=True)
@@ -98,9 +112,10 @@ class Consumer:
             results[self._handle(message_id, fields, deliveries)] += 1
         return results
 
-    def run_forever(self) -> None:  # pragma: no cover - the loop is the process
+    def run_forever(self, heartbeat: str | None = None) -> None:  # pragma: no cover - the loop
         self.ensure_group()
         while True:
+            touch_heartbeat(heartbeat, self._clock())
             self.run_once()
 
     def _reclaimed(self) -> list[tuple[str, dict[str, str], int]]:
@@ -275,7 +290,9 @@ def main() -> None:  # pragma: no cover - entry point of the worker container
         stream=os.environ.get("SLOT_EVENTS_STREAM", DEFAULT_STREAM),
         consumer=os.environ.get("HOSTNAME", "notifier-1"),
     )
-    Consumer(broker, sessionmaker(engine), gateway, settings).run_forever()
+    Consumer(broker, sessionmaker(engine), gateway, settings).run_forever(
+        heartbeat=os.environ.get("SLOT_HEARTBEAT_FILE")
+    )
 
 
 if __name__ == "__main__":
