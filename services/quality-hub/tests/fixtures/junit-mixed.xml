@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="1" failures="2" skipped="1" tests="6" time="0.012" timestamp="2026-09-20T10:34:42.230621+04:00" hostname="MacBook-Pro-Ruslan.local"><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_stable_test_passes" time="0.000" /><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_broken_test_fails" time="0.000"><failure message="assert (2 + 2) == 5">self = &lt;test_failures.TestQuarantineDemo object at 0x108d9afd0&gt;
+
+    def test_a_broken_test_fails(self):
+&gt;       assert 2 + 2 == 5
+E       assert (2 + 2) == 5
+
+tests/unit/test_failures.py:14: AssertionError</failure></testcase><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_parametrised_test_fails_for_one_parameter[1]" time="0.000" /><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_parametrised_test_fails_for_one_parameter[2]" time="0.000"><failure message="assert 2 == 1">self = &lt;test_failures.TestQuarantineDemo object at 0x108d53e10&gt;, attempt = 2
+
+    @pytest.mark.parametrize("attempt", [1, 2])
+    def test_a_parametrised_test_fails_for_one_parameter(self, attempt):
+&gt;       assert attempt == 1
+E       assert 2 == 1
+
+tests/unit/test_failures.py:18: AssertionError</failure></testcase><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_test_whose_fixture_breaks_is_an_error" time="0.000"><error message="failed on setup with &quot;RuntimeError: the fixture could not reach the database&quot;">@pytest.fixture
+    def broken_fixture():
+&gt;       raise RuntimeError("the fixture could not reach the database")
+E       RuntimeError: the fixture could not reach the database
+
+tests/unit/test_failures.py:6: RuntimeError</error></testcase><testcase classname="tests.unit.test_failures.TestQuarantineDemo" name="test_a_skipped_test_carries_no_signal" time="0.000"><skipped type="pytest.skip" message="needs Docker, which this level does not have">/private/tmp/claude-501/-Users-ruslansalakhov-SessionClaudeCode/f50d0438-bccf-4c85-9138-6dc7c5461e2c/scratchpad/genjunit/tests/unit/test_failures.py:23: needs Docker, which this level does not have</skipped></testcase></testsuite></testsuites>
