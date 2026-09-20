@@ -3,10 +3,11 @@
     python tools/changed_services.py BASE_REF   ->  ["payments"]
 
 A service is affected when its own files change, or when a contract it has
-to honour changes (a pact where it is the provider, or the schema of an
-external API it calls). Files that cannot break a service (docs) affect
-nothing. Anything else, and any path this script does not know, affects
-every service: a wrong "nothing to run" is far worse than an extra run.
+to honour changes (a pact where it is the provider, the schema of an
+external API it calls, or the schema of an event it publishes or reads).
+Files that cannot break a service (docs) affect nothing. Anything else, and
+any path this script does not know, affects every service: a wrong "nothing
+to run" is far worse than an extra run.
 """
 
 import json
@@ -14,9 +15,12 @@ import subprocess
 import sys
 from collections.abc import Iterable
 
-SERVICES = ("booking", "payments")
+SERVICES = ("booking", "notifier", "payments")
 # External APIs and the services that call them.
-EXTERNAL_API_USERS = {"contracts/paystub/": ("payments",)}
+EXTERNAL_API_USERS = {"contracts/paystub/": ("payments",), "contracts/notifygw/": ("notifier",)}
+# The event schema and the consumer expectations: both sides are re-checked,
+# because a change there can break either the producer or the consumer.
+EVENT_PARTIES = ("booking", "notifier")
 # Cannot change the behaviour of any service.
 IRRELEVANT = ("docs/", "README.md", "CLAUDE.md", ".gitignore", "smoke/")
 
@@ -29,6 +33,8 @@ def affected_services(paths: Iterable[str]) -> list[str]:
         parts = path.split("/")
         if parts[0] == "services" and len(parts) > 2 and parts[1] in SERVICES:
             affected.add(parts[1])
+        elif path.startswith("contracts/events/"):
+            affected.update(EVENT_PARTIES)
         elif path.startswith("contracts/pacts/") and path.endswith(".json"):
             # {consumer}-{provider}.json: the provider must verify the new contract.
             provider = parts[-1].removesuffix(".json").split("-")[-1]

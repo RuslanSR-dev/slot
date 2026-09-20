@@ -1,0 +1,81 @@
+# NotifyGate: a fictional external notification gateway.
+# Treat this file as received from another company: we cannot change it,
+# and it is all we know about their API (ADR-0007).
+openapi: 3.1.0
+info:
+  title: NotifyGate API
+  version: "2.1.0"
+  description: |
+    Messages are queued by the sender and delivered to the recipient by
+    NotifyGate. Delivery itself is asynchronous: a 201 means the message was
+    accepted, not that the client already read it.
+
+    A repeated `Idempotency-Key` returns the message created by the first
+    request instead of sending a second one. Keys are kept for 24 hours.
+servers:
+  - url: https://api.notifygate.example
+security:
+  - apiKey: []
+paths:
+  /v1/messages:
+    post:
+      operationId: sendMessage
+      summary: Send one message
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: A repeated key returns the message created by the first request.
+          schema:
+            type: string
+            maxLength: 255
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MessageRequest"
+      responses:
+        "201":
+          description: Accepted for delivery, or returned for a repeated key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "401":
+          description: Missing or invalid API key.
+        "422":
+          description: Invalid request.
+        "429":
+          description: Too many messages. Retry later with the same key.
+        "5XX":
+          description: Temporary failure. Retry with the same idempotency key.
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+  schemas:
+    MessageRequest:
+      type: object
+      required: [recipient, text]
+      additionalProperties: false
+      properties:
+        recipient:
+          type: string
+          maxLength: 64
+          description: The sender's identifier of the person to notify.
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1024
+    Message:
+      type: object
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          pattern: "^msg_"
+        status:
+          type: string
+          enum: [queued, delivered, failed]

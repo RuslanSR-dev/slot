@@ -4,7 +4,7 @@
 # Service targets run for every service; narrow them with SERVICES, e.g.
 #   make test-component SERVICES=payments
 
-SERVICES ?= booking payments
+SERVICES ?= booking payments notifier
 SERVICE_DIRS = $(addprefix services/,$(SERVICES))
 # Every Python project in the repo: services plus the system smoke tests.
 PROJECTS = $(SERVICE_DIRS) smoke
@@ -66,8 +66,8 @@ test-mutation: ## Gate: mutation score of the domain rules (do the tests notice 
 
 test-contract: ## Gate: consumer contract tests; the pact files they write must be committed
 	@$(call in_each,$(SERVICE_DIRS),uv run pytest tests/contract --junitxml=reports/junit-contract.xml)
-	@if git status --porcelain -- $(PACTS) | grep .; then \
-		echo "pact files changed: review the new contract and commit it"; exit 1; fi
+	@if git status --porcelain -- contracts | grep .; then \
+		echo "contract files changed: review the new contract and commit it"; exit 1; fi
 
 base-pacts: ## Copy the pact files of BASE_REF: providers are verified against them too
 	@rm -rf $(TMP)/pacts-base && mkdir -p $(TMP)/pacts-base

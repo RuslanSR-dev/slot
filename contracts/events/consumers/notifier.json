@@ -1,0 +1,18 @@
+{
+  "consumer": "notifier",
+  "handled_types": [
+    "booking.cancelled",
+    "booking.confirmed",
+    "booking.expired"
+  ],
+  "producer": "booking",
+  "required_fields": [
+    "booking_id",
+    "client_id",
+    "event_id",
+    "starts_at",
+    "type"
+  ],
+  "schema": "contracts/events/booking.v1.json",
+  "stream": "slot.bookings.v1"
+}

@@ -13,11 +13,23 @@ ALL = sorted(SERVICES)
         pytest.param(["services/booking/src/booking/app.py"], ["booking"], id="own-code"),
         pytest.param(["services/payments/uv.lock"], ["payments"], id="own-dependencies"),
         pytest.param(
-            ["services/booking/app.py", "services/payments/Dockerfile"], ALL, id="both-services"
+            ["services/booking/app.py", "services/payments/Dockerfile"],
+            ["booking", "payments"],
+            id="two-services",
         ),
+        pytest.param(["services/notifier/src/notifier/consumer.py"], ["notifier"], id="notifier"),
         pytest.param(["contracts/pacts/booking-payments.json"], ["payments"], id="pact-provider"),
         pytest.param(["contracts/pacts/payments-booking.json"], ["booking"], id="pact-reverse"),
         pytest.param(["contracts/paystub/openapi.yaml"], ["payments"], id="external-api"),
+        pytest.param(["contracts/notifygw/openapi.yaml"], ["notifier"], id="external-api-notifygw"),
+        pytest.param(
+            ["contracts/events/booking.v1.json"], ["booking", "notifier"], id="event-schema"
+        ),
+        pytest.param(
+            ["contracts/events/consumers/notifier.json"],
+            ["booking", "notifier"],
+            id="event-consumer-contract",
+        ),
         pytest.param(["docs/roadmap.md", "README.md"], [], id="docs-only"),
         pytest.param(["smoke/tests/test_stack.py"], [], id="smoke-runs-anyway"),
         pytest.param([], [], id="nothing-changed"),
@@ -34,6 +46,7 @@ def test_affected_services(paths: list[str], expected: list[str]) -> None:
         "compose.yaml",
         ".github/workflows/ci.yml",
         "infra/paystub/mappings/create-charge.json",
+        "infra/notifygw/mappings/send-message.json",
         "tools/changed_services.py",
         "services/new-service/app.py",
         "<unknown base>",

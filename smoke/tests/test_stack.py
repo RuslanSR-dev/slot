@@ -9,7 +9,9 @@ import hashlib
 import hmac
 import json
 import os
+import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -18,12 +20,29 @@ import pytest
 
 BOOKING_URL = os.environ.get("SLOT_BOOKING_URL", "http://127.0.0.1:8000")
 PAYMENTS_URL = os.environ.get("SLOT_PAYMENTS_URL", "http://127.0.0.1:8001")
+NOTIFIER_URL = os.environ.get("SLOT_NOTIFIER_URL", "http://127.0.0.1:8002")
+# The notification travels through an outbox, a broker and a worker, so it
+# arrives a moment later than the answer to the request (ADR-0010).
+EVENTUALLY = 20.0
 WEBHOOK_SECRET = os.environ.get("SLOT_PAYSTUB_WEBHOOK_SECRET", "local-webhook-secret")
 # Empty counts as missing: `make` passes an empty value when git is unavailable.
 EXPECTED_BUILD_SHA = os.environ.get("SLOT_EXPECTED_BUILD_SHA") or None
 # GitHub Actions and most CI systems set CI=true.
 IN_CI = os.environ.get("CI") == "true"
-SERVICES = {"booking": BOOKING_URL, "payments": PAYMENTS_URL}
+SERVICES = {"booking": BOOKING_URL, "payments": PAYMENTS_URL, "notifier": NOTIFIER_URL}
+
+
+def wait_until(condition: Callable[[], Any], timeout: float, what: str) -> Any:
+    """Poll a condition instead of sleeping a fixed time (see docs/test-strategy.md).
+
+    Returns what the condition returned, so the test can assert on it.
+    """
+    deadline = time.monotonic() + timeout
+    while not (result := condition()):
+        if time.monotonic() > deadline:
+            raise AssertionError(f"{what} did not happen within {timeout}s")
+        time.sleep(0.1)
+    return result
 
 
 @pytest.fixture
@@ -35,6 +54,12 @@ def booking() -> Any:
 @pytest.fixture
 def payments() -> Any:
     with httpx2.Client(base_url=PAYMENTS_URL, timeout=10) as http:
+        yield http
+
+
+@pytest.fixture
+def notifier() -> Any:
+    with httpx2.Client(base_url=NOTIFIER_URL, timeout=10) as http:
         yield http
 
 
@@ -70,10 +95,10 @@ def signed_webhook(payments: httpx2.Client, event: dict[str, Any]) -> httpx2.Res
     )
 
 
-def test_booking_is_paid_and_confirmed_end_to_end(
-    booking: httpx2.Client, payments: httpx2.Client
+def test_booking_is_paid_confirmed_and_the_client_is_told(
+    booking: httpx2.Client, payments: httpx2.Client, notifier: httpx2.Client
 ) -> None:
-    """booking -> payments -> PayStub stub -> webhook -> payments -> booking."""
+    """booking -> payments -> PayStub -> webhook -> booking -> outbox -> Redis -> notifier."""
     starts_at = datetime.now(UTC) + timedelta(days=1)
     slot = booking.post(
         "/slots",
@@ -107,3 +132,22 @@ def test_booking_is_paid_and_confirmed_end_to_end(
     assert delivered.json() == {"outcome": "processed"}, delivered.text
     assert redelivered.json() == {"outcome": "duplicate"}
     assert booking.get(f"/bookings/{booking_id}").json()["status"] == "confirmed"
+
+    # The last step is asynchronous: the event goes through the outbox, the
+    # relay and the broker before the notifier sends anything.
+    # Waiting for the end state, not for the row to appear: a notification
+    # that exists in `sending` proves only that the event arrived.
+    sent = wait_until(
+        lambda: [
+            notification
+            for notification in notifier.get(
+                "/notifications", params={"booking_id": booking_id}
+            ).json()
+            if notification["status"] == "sent"
+        ],
+        timeout=EVENTUALLY,
+        what="the notification about the confirmed booking to be sent",
+    )
+
+    assert [notification["event_type"] for notification in sent] == ["booking.confirmed"]
+    assert sent[0]["client_id"] == "smoke-client"

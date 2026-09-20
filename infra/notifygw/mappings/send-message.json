@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/messages",
+    "headers": {
+      "Idempotency-Key": { "matches": ".+" },
+      "Authorization": { "matches": "^Bearer .+" }
+    }
+  },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "id": "msg_stack",
+      "status": "queued"
+    }
+  }
+}

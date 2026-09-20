@@ -45,12 +45,28 @@ x-payments: &payments
     SLOT_PAYSTUB_WEBHOOK_SECRET: ${SLOT_PAYSTUB_WEBHOOK_SECRET:-local-webhook-secret}
     SLOT_BOOKING_URL: http://booking:8000
 
+x-notifier: &notifier
+  <<: *hardened
+  build:
+    context: services/notifier
+    args:
+      SLOT_BUILD_SHA: ${SLOT_BUILD_SHA:-}
+  image: slot-notifier
+  environment:
+    SLOT_DATABASE_URL: postgresql+psycopg://slot:slot@notifier-db:5432/slot
+    SLOT_REDIS_URL: redis://redis:6379/0
+    SLOT_NOTIFYGW_URL: http://notifygw:8080
+    SLOT_NOTIFYGW_API_KEY: local-api-key
+
 services:
   # Each service owns its database: no service reads another's tables.
   booking-db:
     <<: *postgres
 
   payments-db:
+    <<: *postgres
+
+  notifier-db:
     <<: *postgres
 
   # The broker (ADR-0009). `appendonly yes` is not a detail: without it an
@@ -88,6 +104,14 @@ services:
       payments-db:
         condition: service_healthy
 
+  notifier-migrate:
+    <<: *notifier
+    command: ["python", "-m", "notifier.migrate"]
+    restart: "no"
+    depends_on:
+      notifier-db:
+        condition: service_healthy
+
   booking:
     <<: *booking
     ports:
@@ -119,11 +143,40 @@ services:
       payments-migrate:
         condition: service_completed_successfully
 
+  notifier:
+    <<: *notifier
+    ports:
+      - "127.0.0.1:8002:8000"
+    depends_on:
+      notifier-migrate:
+        condition: service_completed_successfully
+
+  # Reads the events and sends the notifications. Separate from the API:
+  # an HTTP server and a queue consumer have different reasons to restart.
+  notifier-worker:
+    <<: *notifier
+    command: ["python", "-m", "notifier.consumer"]
+    healthcheck:
+      disable: true
+    depends_on:
+      notifier-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
   # The external provider, replaced by a stub (contracts/paystub/openapi.yaml).
   paystub:
     image: wiremock/wiremock:3.13.1
     volumes:
       - ./infra/paystub/mappings:/home/wiremock/mappings:ro
+
+  # The external notification gateway, also a stub (contracts/notifygw/openapi.yaml).
+  notifygw:
+    image: wiremock/wiremock:3.13.1
+    ports:
+      - "127.0.0.1:8090:8080"
+    volumes:
+      - ./infra/notifygw/mappings:/home/wiremock/mappings:ro
 
 volumes:
   redis-data:

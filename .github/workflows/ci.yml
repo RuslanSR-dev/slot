@@ -37,7 +37,7 @@ jobs:
         # main always runs everything: the safety net for a wrong impact analysis.
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            services='["booking","payments"]'
+            services='["booking","notifier","payments"]'
           else
             services=$(make -s changed-services)
           fi
