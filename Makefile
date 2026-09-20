@@ -37,8 +37,13 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE ?= /var/run/docker.sock
 BASE_REF ?= origin/main
 # Pinned by digest: the gate must not change behaviour because "latest" moved.
 OASDIFF = tufin/oasdiff@sha256:0286f138545a39010525df6c1bea67ffafacb384ef800effffa63bbd04718ce5
+# Secret scanner, pinned by digest for the same reason as oasdiff: a gate must
+# not change its mind because a tag moved.
+GITLEAKS = zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
 # Inside the repo, so Docker (also through Colima) can mount it.
 TMP = .tmp
+# Reports of the repository-wide gates. Ignored by git, uploaded by CI.
+REPORTS = reports
 PACTS = contracts/pacts
 # The published shape of the booking event (ADR-0010).
 EVENTS = contracts/events/booking.v1.json
@@ -53,7 +58,8 @@ in_each = for dir in $(1); do echo "--- $$dir"; (cd $$dir && $(2)) || exit 1; do
 
 .PHONY: help install format lint typecheck test-unit test-mutation test-component check \
 	openapi openapi-check openapi-breaking events events-check events-breaking \
-	test-contract base-pacts test-tools fitness changed-services up smoke down logs
+	test-contract base-pacts test-tools fitness changed-services up smoke down logs \
+	security audit secrets
 
 help:
 	@grep -E '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':.*?## ' '{printf "  %-15s %s\n", $$1, $$2}'
@@ -138,6 +144,38 @@ test-tools: ## Gate: tests of the repository tools (test impact analysis)
 
 fitness: ## Gate: fitness function - no service imports the code of another (ADR-0002)
 	@$(TOOLS_RUN) python tools/import_boundaries.py
+
+security: audit secrets ## Both security gates: dependencies and secrets (ADR-0018)
+
+audit: ## Gate: known vulnerabilities in the dependencies of every project (ADR-0018)
+	@$(TOOLS_RUN) python tools/accepted_risks.py
+	@$(TOOLS_RUN) python tools/dependency_audit.py $(PROJECTS)
+
+# Two scans, because they answer different questions. The working tree says
+# "is a secret about to be committed", the history says "has one ever been" -
+# and a secret that was committed and then deleted is still published.
+# The history is scanned in a throwaway bare repository holding exactly what
+# HEAD reaches, built by pushing HEAD. A separate repository is needed at all
+# because in a worktree `.git` is a file pointing outside the directory Docker
+# can mount; pushing HEAD rather than cloning says which commits are meant
+# without depending on how clone picks a branch, and HEAD is a commit in CI
+# too, where a pull request is checked out detached.
+# What HEAD reaches and nothing else: the gate answers for this change, every
+# other branch is scanned by its own pull request, and with a shared object
+# store "everything" would drag half a dozen unfinished branches into it.
+secrets: ## Gate: no secret in the working tree or anywhere in the history (ADR-0018)
+	@mkdir -p $(REPORTS) $(TMP)
+	@rm -rf $(TMP)/history.git
+	@git init --bare --quiet $(TMP)/history.git
+	@git push --quiet $(TMP)/history.git HEAD:refs/heads/scanned
+	@git --git-dir=$(TMP)/history.git symbolic-ref HEAD refs/heads/scanned
+	@docker run --rm -v "$(CURDIR):/repo:ro" -v "$(CURDIR)/$(REPORTS):/out" $(GITLEAKS) \
+		dir /repo --config /repo/security/gitleaks.toml --no-banner --redact=50 --verbose \
+		--report-format json --report-path /out/secrets-worktree.json
+	@docker run --rm -v "$(CURDIR)/$(TMP)/history.git:/history:ro" \
+		-v "$(CURDIR)/security:/config:ro" -v "$(CURDIR)/$(REPORTS):/out" $(GITLEAKS) \
+		git /history --config /config/gitleaks.toml --no-banner --redact=50 --verbose \
+		--report-format json --report-path /out/secrets-history.json
 
 changed-services: ## Print the services the changes since BASE_REF can break (JSON)
 	@$(TOOLS_RUN) python tools/changed_services.py $(BASE_REF)

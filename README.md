@@ -19,6 +19,7 @@ A small appointment-booking product built as a training ground for test automati
 ```bash
 make install   # зависимости из lock-файла
 make check     # линтер, типы, unit-тесты с порогом покрытия
+make security  # уязвимости в зависимостях и поиск секретов (нужен Docker)
 make up        # собрать образы и поднять стек, дождаться готовности
 make smoke     # smoke-тесты против поднятого стека
 make down      # остановить и удалить стек
