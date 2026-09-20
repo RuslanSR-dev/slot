@@ -44,6 +44,12 @@ def vectors() -> Any:
 VECTORS = vectors()
 
 
+def recorded_token(vector: Any) -> str:
+    """The file keeps the two parts apart so that no committed string looks
+    like a live token; the token itself is what web actually issues."""
+    return f"v1.{vector['claims']}.{vector['signature']}"
+
+
 def b64(raw: bytes) -> str:
     """base64url, no padding: the token travels in a cookie (see auth.PADDING)."""
     return base64.urlsafe_b64encode(raw).replace(b"=", b"").decode()
@@ -68,7 +74,7 @@ class TestTokenFormatIsTheContractBetweenWebAndBooking:
 
     @pytest.mark.parametrize("vector", VECTORS["vectors"], ids=lambda v: v["subject"])
     def test_a_recorded_token_is_read_as_its_recorded_identity(self, vector: Any) -> None:
-        identity = verify_token(vector["token"], VECTORS["secret"], NOW)
+        identity = verify_token(recorded_token(vector), VECTORS["secret"], NOW)
 
         assert identity == Identity(subject=vector["subject"], role=Role(vector["role"]))
 
@@ -77,7 +83,7 @@ class TestTokenFormatIsTheContractBetweenWebAndBooking:
         after = datetime.fromtimestamp(vector["expires_at"] + 1, tz=UTC)
 
         with pytest.raises(ExpiredTokenError):
-            verify_token(vector["token"], VECTORS["secret"], after)
+            verify_token(recorded_token(vector), VECTORS["secret"], after)
 
 
 class TestSignature:

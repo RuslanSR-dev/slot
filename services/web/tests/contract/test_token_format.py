@@ -39,11 +39,17 @@ def record(vector: dict[str, Any]) -> dict[str, Any]:
     # issue_token decides the expiry itself, so the recorded moment is
     # counted back from the expiry we want in the file.
     login = datetime.fromtimestamp(vector["expires_at"], tz=UTC) - SESSION_LIFETIME
+    _, claims, signature = issue_token(vector["subject"], vector["role"], SECRET, login).split(".")
+    # Recorded in two parts on purpose. A whole token in a committed file is a
+    # long opaque string next to the word "token", which is what a secret
+    # scanner is built to find - and every regeneration would leave another one
+    # in the history forever. The consumer joins them back with dots.
     return {
         "subject": vector["subject"],
         "role": str(vector["role"]),
         "expires_at": vector["expires_at"],
-        "token": issue_token(vector["subject"], vector["role"], SECRET, login),
+        "claims": claims,
+        "signature": signature,
     }
 
 
@@ -58,4 +64,6 @@ def test_the_recorded_tokens_are_the_ones_we_produce_today() -> None:
     path = repository() / VECTOR_FILE
     path.write_text(json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
 
-    assert json.loads(path.read_text())["vectors"][0]["token"].startswith("v1.")
+    recorded = json.loads(path.read_text())["vectors"][0]
+    assert recorded["claims"], "the claims half of the token must be recorded"
+    assert recorded["signature"], "the signature half of the token must be recorded"

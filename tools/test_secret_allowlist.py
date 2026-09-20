@@ -10,7 +10,6 @@ that shows up in review as a line somebody has to justify - which is exactly
 the conversation the gate exists to start.
 """
 
-import json
 import re
 import subprocess
 import tomllib
@@ -21,11 +20,16 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = REPO_ROOT / "security" / "gitleaks.toml"
+# Whole tokens that were committed to contracts/auth/token.v1.json before
+# the file started keeping the claims and the signature apart. They live
+# only in the history now, and the history is what the scanner reads.
 TOKEN_VECTORS = [
-    vector["token"]
-    for vector in json.loads((REPO_ROOT / "contracts" / "auth" / "token.v1.json").read_text())[
-        "vectors"
-    ]
+    "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0=.oWkUYn-rHJN545C2CCbqVu2RMAeLYXunD1a75MWZz04=",
+    "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ==._FGagf0O-86dy0P8XYlk1OchGAec5klxZmYWwRaqeqw=",
+    "v1.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY=",
+    "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0.7wHvUKSzyxxlORZ7nHcZ_adNOdQlLBgtA5xKuIQyrsQ",
+    "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ.abEufZQHhyCE92OFf6Mw6BKlIaQ4LW8Q8NRrsPzQhNU",
+    "v1.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY",
 ]
 
 # Every literal the scanner is allowed to stay silent about. The reason for

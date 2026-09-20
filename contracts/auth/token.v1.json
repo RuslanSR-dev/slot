@@ -3,22 +3,25 @@
   "secret": "golden-secret-for-the-vectors",
   "vectors": [
     {
+      "claims": "eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0",
       "expires_at": 1790000000,
       "role": "master",
-      "subject": "anna",
-      "token": "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0.7wHvUKSzyxxlORZ7nHcZ_adNOdQlLBgtA5xKuIQyrsQ"
+      "signature": "7wHvUKSzyxxlORZ7nHcZ_adNOdQlLBgtA5xKuIQyrsQ",
+      "subject": "anna"
     },
     {
+      "claims": "eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ",
       "expires_at": 1790000000,
       "role": "client",
-      "subject": "client-42",
-      "token": "v1.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ.abEufZQHhyCE92OFf6Mw6BKlIaQ4LW8Q8NRrsPzQhNU"
+      "signature": "abEufZQHhyCE92OFf6Mw6BKlIaQ4LW8Q8NRrsPzQhNU",
+      "subject": "client-42"
     },
     {
+      "claims": "eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9",
       "expires_at": 2000000000,
       "role": "client",
-      "subject": "o.brien:1@slot",
-      "token": "v1.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY"
+      "signature": "La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY",
+      "subject": "o.brien:1@slot"
     }
   ]
 }

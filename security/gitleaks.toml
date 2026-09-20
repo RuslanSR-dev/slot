@@ -117,9 +117,12 @@ regexTarget = "secret"
 regexes = ['''^attacker-secret$''']
 
 [[allowlists]]
-description = "the three recorded token vectors of contracts/auth/token.v1.json: values signed with the golden test secret, pinned by the contract test so that web and booking cannot drift apart; none of them is valid anywhere the real secret is used"
+description = "the golden token vectors that were once committed to contracts/auth/token.v1.json: values signed with a test secret that signs nothing that runs. The file no longer keeps whole tokens at all - it keeps the claims and the signature apart - so regenerating it adds nothing to this list"
 regexTarget = "secret"
 regexes = [
+    '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0=\.oWkUYn-rHJN545C2CCbqVu2RMAeLYXunD1a75MWZz04=$''',
+    '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ==\._FGagf0O-86dy0P8XYlk1OchGAec5klxZmYWwRaqeqw=$''',
+    '''^v1\.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9\.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY=$''',
     '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJtYXN0ZXIiLCJzdWIiOiJhbm5hIn0\.7wHvUKSzyxxlORZ7nHcZ_adNOdQlLBgtA5xKuIQyrsQ$''',
     '''^v1\.eyJleHAiOjE3OTAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJjbGllbnQtNDIifQ\.abEufZQHhyCE92OFf6Mw6BKlIaQ4LW8Q8NRrsPzQhNU$''',
     '''^v1\.eyJleHAiOjIwMDAwMDAwMDAsInJvbGUiOiJjbGllbnQiLCJzdWIiOiJvLmJyaWVuOjFAc2xvdCJ9\.La9TQWjEabsV8xgJWQZMKTtaNetDAY3IQ1gB8GsnPHY$''',
